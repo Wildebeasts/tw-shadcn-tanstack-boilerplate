@@ -9,10 +9,10 @@ import windowIcon from "@/images/xt2uot9yhpma85juvk.svg";
 import { UserButton, useAuth } from "@clerk/clerk-react";
 
 const menuItems = [
-  { name: "FEATURES", href: "/features" },
-  { name: "BLOG", href: "/blog" },
+  { name: "FEATURES", href: "/#link" },
+  { name: "BLOG", href: "/#link" },
   { name: "PRICING", href: "/pricing" },
-  { name: "ABOUT", href: "/about" },
+  { name: "ABOUT", href: "/#link" },
 ];
 
 export const HeroHeader = () => {

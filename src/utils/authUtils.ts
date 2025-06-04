@@ -9,10 +9,7 @@ const publicRoutes = [
   "/sign-in/sso-callback",
   "/sign-up",
   "/sign-up/continue",
-  "/pricing",
-  "/features",
-  "/blog",
-  "/about"
+  "/pricing"
 ];
 
 // Get environment variables with fallbacks

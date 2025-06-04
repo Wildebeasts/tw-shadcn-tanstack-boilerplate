@@ -48,7 +48,7 @@ const tableData = [
 
 export default function PricingComparator() {
   return (
-    <section className="pb-8 md:pb-16 mt-[4rem] mb-[2rem] scale-110">
+    <section className="pb-8 md:pb-16">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         {/* Mobile view (card-based layout) */}
         <div className="flex flex-col gap-8 md:hidden">
@@ -63,7 +63,7 @@ export default function PricingComparator() {
                   key={index}
                   className="flex justify-between py-2 border-b last:border-none"
                 >
-                  <span className="text-sm">
+                  <span className="text-muted-foreground text-sm">
                     {row.feature}
                   </span>
                   <span>
@@ -100,7 +100,7 @@ export default function PricingComparator() {
                   key={index}
                   className="flex justify-between py-2 border-b last:border-none"
                 >
-                  <span className="text-sm">
+                  <span className="text-muted-foreground text-sm">
                     {row.feature}
                   </span>
                   <span>
@@ -145,7 +145,7 @@ export default function PricingComparator() {
               <tbody className="text-caption text-sm">
                 {tableData.map((row, index) => (
                   <tr key={index} className="*:border-b *:py-3">
-                    <td className="">{row.feature}</td>
+                    <td className="text-muted-foreground">{row.feature}</td>
                     <td className="px-4">
                       {row.sprout === true ? (
                         <svg

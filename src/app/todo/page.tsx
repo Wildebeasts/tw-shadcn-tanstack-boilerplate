@@ -229,7 +229,7 @@ const TodoPage = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col text-gray-800 bg-gradient-to-b from-[#E4EFE7] to-white dark:text-gray-200 dark:bg-slate-900 p-4 sm:p-6 lg:p-8">
+    <div className="h-[calc(100vh-100px)] flex flex-col text-gray-800 dark:text-gray-200 bg-[#fdf2f8] dark:bg-slate-900 p-4 sm:p-6 lg:p-8">
       {/* Main Content (No Sidebar) */}
       <main className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-7xl mx-auto p-6 md:p-10 overflow-y-auto w-full">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
