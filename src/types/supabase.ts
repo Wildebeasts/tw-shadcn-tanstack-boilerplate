@@ -33,6 +33,7 @@ export interface JournalEntry {
   ocr_processed_text?: string; // TEXT
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
+  project_id?: string; // UUID NULL
 }
 
 export interface MediaAttachment {
@@ -238,4 +239,15 @@ export interface MoodLog {
   notes?: string; // TEXT
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   // UNIQUE(user_id, log_date)
+}
+
+export interface Project {
+  id?: string; // UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4()
+  user_id: string; // TEXT NOT NULL
+  name: string; // TEXT NOT NULL
+  description?: string; // TEXT
+  color_hex?: string; // TEXT
+  created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
+  updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
+  // UNIQUE (user_id, name)
 } 
