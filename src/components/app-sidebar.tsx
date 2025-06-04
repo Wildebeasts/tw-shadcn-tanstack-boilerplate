@@ -2,7 +2,6 @@
 import * as React from "react";
 import {
   BookOpen,
-  Map,
   PieChart,
   Home,
   CheckSquare,
@@ -11,6 +10,10 @@ import {
   UserCircle,
   Settings,
   Shield,
+  PlusSquare,
+  // FolderKanban, // Removed as it's used in NavProjects
+  // Pencil, // Removed as it's used in NavProjects
+  // Trash2, // Removed as it's used in NavProjects
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -25,10 +28,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { UserButton, useUser } from "@clerk/clerk-react";
+import { UserButton, useUser, useSession } from "@clerk/clerk-react";
 import logoBean from "@/images/logo_bean_journal.png";
 import { Link } from "@tanstack/react-router";
 import { ThemeShopPage } from '@/routes/theme-shop';
+import { getProjectsByUserId, createProject, updateProject, deleteProject } from "@/services/projectService";
+import type { Project } from "@/types/supabase";
+import { createClerkSupabaseClient } from "@/utils/supabaseClient";
+import { Button } from "@/components/ui/Button";
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import * as LabelPrimitive from '@radix-ui/react-label';
 
 const data = {
   user: {
@@ -64,27 +73,143 @@ const data = {
     },
   ],
   navSecondary: [],
-  projects: [
-    {
-      name: "Study",
-      url: "#",
-      icon: BookOpen,
-    },
-    {
-      name: "Fitness",
-      url: "#",
-      icon: PieChart,
-    },
-    {
-      name: "Nature",
-      url: "#",
-      icon: Map,
-    },
-  ],
+  // projects: [ // Will be fetched dynamically
+  //   {
+  //     name: "Study",
+  //     url: "#",
+  //     icon: BookOpen,
+  //   },
+  //   {
+  //     name: "Fitness",
+  //     url: "#",
+  //     icon: PieChart,
+  //   },
+  //   {
+  //     name: "Nature",
+  //     url: "#",
+  //     icon: Map,
+  //   },
+  // ],
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { isSignedIn } = useUser();
+  const { isSignedIn, user } = useUser();
+  const { session } = useSession();
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = React.useState(true);
+  const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = React.useState(false);
+  const [newProjectName, setNewProjectName] = React.useState("");
+  const [newProjectDescription, setNewProjectDescription] = React.useState("");
+  const [newProjectColor, setNewProjectColor] = React.useState("#FFFFFF");
+
+  const [isEditProjectModalOpen, setIsEditProjectModalOpen] = React.useState(false);
+  const [editingProject, setEditingProject] = React.useState<Project | null>(null);
+  const [editProjectName, setEditProjectName] = React.useState("");
+  const [editProjectDescription, setEditProjectDescription] = React.useState("");
+  const [editProjectColor, setEditProjectColor] = React.useState("#FFFFFF");
+
+  const activeSupabaseClient = React.useMemo(() => {
+    if (session) {
+      return createClerkSupabaseClient(() => session.getToken());
+    }
+    return null;
+  }, [session]);
+
+  React.useEffect(() => {
+    if (user?.id && activeSupabaseClient) {
+      setIsLoadingProjects(true);
+      getProjectsByUserId(activeSupabaseClient, user.id)
+        .then((data) => {
+          setProjects(data || []);
+        })
+        .catch(error => {
+          console.error("Error fetching projects:", error);
+          setProjects([]);
+        })
+        .finally(() => {
+          setIsLoadingProjects(false);
+        });
+    } else {
+      setProjects([]);
+      setIsLoadingProjects(false);
+    }
+  }, [user?.id, activeSupabaseClient]);
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim() || !user?.id || !activeSupabaseClient) {
+      console.error("Project name and user ID are required.");
+      return;
+    }
+    try {
+      const created = await createProject(activeSupabaseClient, {
+        user_id: user.id,
+        name: newProjectName,
+        description: newProjectDescription || undefined,
+        color_hex: newProjectColor || undefined,
+      });
+      if (created) {
+        setProjects(prev => [...prev, created]);
+        setIsCreateProjectModalOpen(false);
+        setNewProjectName("");
+        setNewProjectDescription("");
+        setNewProjectColor("#FFFFFF");
+      } else {
+        console.error("Failed to create project.");
+      }
+    } catch (error) {
+      console.error("Error in handleCreateProject:", error);
+    }
+  };
+
+  const openEditModal = (project: Project) => {
+    setEditingProject(project);
+    setEditProjectName(project.name);
+    setEditProjectDescription(project.description || "");
+    setEditProjectColor(project.color_hex || "#FFFFFF");
+    setIsEditProjectModalOpen(true);
+  };
+
+  const handleUpdateProject = async () => {
+    if (!editingProject || !editProjectName.trim() || !activeSupabaseClient) {
+      console.error("Editing project data is missing or invalid.");
+      return;
+    }
+    try {
+      const updated = await updateProject(activeSupabaseClient, editingProject.id!, {
+        name: editProjectName,
+        description: editProjectDescription || undefined,
+        color_hex: editProjectColor || undefined,
+      });
+      if (updated) {
+        setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+        setIsEditProjectModalOpen(false);
+        setEditingProject(null);
+      } else {
+        console.error("Failed to update project.");
+      }
+    } catch (error) {
+      console.error("Error in handleUpdateProject:", error);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!activeSupabaseClient) {
+      console.error("Supabase client not available.");
+      return;
+    }
+    if (window.confirm("Are you sure you want to delete this project and all its associated data? This action cannot be undone.")) {
+      try {
+        const success = await deleteProject(activeSupabaseClient, projectId);
+        if (success) {
+          setProjects(prev => prev.filter(p => p.id !== projectId));
+        } else {
+          console.error("Failed to delete project.");
+        }
+      } catch (error) {
+        console.error("Error in handleDeleteProject:", error);
+      }
+    }
+  };
 
   if (!isSignedIn) {
     return (
@@ -117,11 +242,42 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavMain items={data.navMain} />
         <div className="px-2 py-2">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-xs font-medium text-[#1e1742]/70 dark:text-white/70">
+              Projects
+            </h3>
+            <Button variant="ghost" size="icon" onClick={() => setIsCreateProjectModalOpen(true)} className="h-7 w-7 text-[#1e1742]/70 dark:text-white/70 hover:bg-muted">
+              <PlusSquare size={16} />
+              <span className="sr-only">Create New Project</span>
+            </Button>
+          </div>
+        </div>
+        {isLoadingProjects ? (
+          <div className="p-2 text-xs text-center text-gray-500">Loading projects...</div>
+        ) : projects.length > 0 ? (
+          <NavProjects
+            projects={projects}
+            onEditProject={openEditModal}
+            onDeleteProject={handleDeleteProject}
+          />
+        ) : (
+          <div className="px-4 py-2">
+            <p className="text-xs text-center text-gray-500 mb-2">No projects yet.</p>
+            <Button
+              variant="outline"
+              className="w-full text-sm"
+              onClick={() => setIsCreateProjectModalOpen(true)}
+            >
+              <PlusSquare size={16} className="mr-2" />
+              Create New Project
+            </Button>
+          </div>
+        )}
+        <div className="px-2 py-2 mt-4">
           <h3 className="px-2 text-xs font-medium text-[#1e1742]/70 dark:text-white/70">
             Trending Tags
           </h3>
         </div>
-        <NavProjects projects={data.projects} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
@@ -241,7 +397,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </UserButton.UserProfilePage>
                   <UserButton.UserProfilePage
                     label="Shop"
-                    url="theme-shop-modal" // Unique identifier for this page within the modal
+                    url="theme-shop-modal"
                     labelIcon={<ShoppingBag size={16} />}
                   >
                     <ThemeShopPage />
@@ -252,6 +408,154 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <DialogPrimitive.Root open={isCreateProjectModalOpen} onOpenChange={setIsCreateProjectModalOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 bg-black/50 data-[state=open]:animate-overlayShow z-50" />
+          <DialogPrimitive.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[450px] bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg data-[state=open]:animate-contentShow focus:outline-none z-50">
+            <DialogPrimitive.Title className="text-lg font-medium text-[#1e1742] dark:text-white mb-1">
+              Create New Project
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Organize your journal entries by creating a new project.
+            </DialogPrimitive.Description>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="projectName" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Name
+                </LabelPrimitive.Root>
+                <input
+                  id="projectName"
+                  value={newProjectName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProjectName(e.target.value)}
+                  className="col-span-3 p-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Novel Writing, Vacation 2024"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="projectDescription" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Description
+                </LabelPrimitive.Root>
+                <textarea
+                  id="projectDescription"
+                  value={newProjectDescription}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewProjectDescription(e.target.value)}
+                  className="col-span-3 p-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 h-24"
+                  placeholder="Optional: A brief description of your project"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="projectColor" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Color
+                </LabelPrimitive.Root>
+                <input
+                  id="projectColor"
+                  type="color"
+                  value={newProjectColor}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProjectColor(e.target.value)}
+                  className="col-span-3 h-10 w-full p-1 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <DialogPrimitive.Close asChild>
+                <button 
+                  type="button"
+                  onClick={() => setIsCreateProjectModalOpen(false)} 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md border border-gray-300 dark:border-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                >
+                  Cancel
+                </button>
+              </DialogPrimitive.Close>
+              <button 
+                type="button"
+                onClick={handleCreateProject} 
+                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2"
+              >
+                Create Project
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+
+      {/* Edit Project Modal */}
+      <DialogPrimitive.Root open={isEditProjectModalOpen} onOpenChange={setIsEditProjectModalOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 bg-black/50 data-[state=open]:animate-overlayShow z-50" />
+          <DialogPrimitive.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[450px] bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg data-[state=open]:animate-contentShow focus:outline-none z-50">
+            <DialogPrimitive.Title className="text-lg font-medium text-[#1e1742] dark:text-white mb-1">
+              Edit Project
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Update the details of your project.
+            </DialogPrimitive.Description>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="editProjectName" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Name
+                </LabelPrimitive.Root>
+                <input
+                  id="editProjectName"
+                  value={editProjectName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditProjectName(e.target.value)}
+                  className="col-span-3 p-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Novel Writing, Vacation 2024"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="editProjectDescription" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Description
+                </LabelPrimitive.Root>
+                <textarea
+                  id="editProjectDescription"
+                  value={editProjectDescription}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditProjectDescription(e.target.value)}
+                  className="col-span-3 p-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 h-24"
+                  placeholder="Optional: A brief description of your project"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <LabelPrimitive.Root htmlFor="editProjectColor" className="text-right text-sm font-medium text-[#1e1742] dark:text-gray-300">
+                  Color
+                </LabelPrimitive.Root>
+                <input
+                  id="editProjectColor"
+                  type="color"
+                  value={editProjectColor}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditProjectColor(e.target.value)}
+                  className="col-span-3 h-10 w-full p-1 border border-gray-300 dark:border-gray-600 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <DialogPrimitive.Close asChild>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsEditProjectModalOpen(false);
+                    setEditingProject(null);
+                  }} 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md border border-gray-300 dark:border-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                >
+                  Cancel
+                </button>
+              </DialogPrimitive.Close>
+              <button 
+                type="button"
+                onClick={handleUpdateProject} 
+                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2"
+              >
+                Save Changes
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
     </Sidebar>
   );
 }

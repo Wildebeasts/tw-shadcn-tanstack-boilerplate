@@ -4,11 +4,12 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DiaryCard from '@/components/diary/DiaryCard';
 // import DiaryCreateForm from '@/components/diary/DiaryCreateForm'; // Commented out as DiaryDetailView will be editor
 import DiaryDetailView from '@/components/diary/DiaryDetailView';
-import { JournalEntry, Tag } from '@/types/supabase';
+import { JournalEntry, Tag, Project } from '@/types/supabase';
 import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // Added Supabase client creator
 import { useAuth } from "@clerk/clerk-react"; // Added Clerk useAuth
 import { createJournalEntry, getJournalEntriesByUserId, updateJournalEntry, deleteJournalEntry } from '@/services/journalEntryService'; // Added journal entry services and updateJournalEntry
 import { getTagsByUserId, getEntryTagsByEntryId } from '@/services/tagService'; // Added tag service and getEntryTagsByEntryId
+import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Import project service
 // import Calendar from 'react-calendar'; // REMOVED react-calendar import
 // import 'react-calendar/dist/Calendar.css'; // REMOVED react-calendar CSS
 // import { useRouter, useSearchParams } from 'next/navigation'; // REMOVE Next.js router hooks
@@ -49,6 +50,33 @@ interface JournalEntryWithTags extends JournalEntry {
 
 const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; // Added for new calendar
 
+// Helper function to sort diaries by entry_timestamp robustly
+// Sorts in descending order (newest first)
+// Null or invalid timestamps are sorted towards the end
+const sortDiariesByEntryTimestamp = (a: JournalEntryWithTags, b: JournalEntryWithTags) => {
+  const tsA = a.entry_timestamp;
+  const tsB = b.entry_timestamp;
+
+  // Handle cases where timestamps might be null
+  if (tsA === null && tsB === null) return 0;
+  if (tsA === null) return 1; // null timestamps sort after valid ones (i.e., appear "later" or at the end for descending)
+  if (tsB === null) return -1; // null timestamps sort after valid ones
+
+  const dateA = new Date(tsA).getTime();
+  const dateB = new Date(tsB).getTime();
+
+  // Handle NaN (invalid date string after conversion)
+  const aIsNaN = isNaN(dateA);
+  const bIsNaN = isNaN(dateB);
+
+  if (aIsNaN && bIsNaN) return 0;
+  // Sort NaNs after valid dates (and after nulls, due to previous checks)
+  if (aIsNaN) return 1; 
+  if (bIsNaN) return -1;
+
+  return dateB - dateA; // Descending order (newest first)
+};
+
 const DiaryPage = () => {
   const { getToken, userId } = useAuth();
   const supabase = useMemo(() => {
@@ -71,6 +99,10 @@ const DiaryPage = () => {
   const [isLoadingUserTags, setIsLoadingUserTags] = useState(true);
   const [activeFilterTagIds, setActiveFilterTagIds] = useState<string[]>([]);
 
+  const [allUserProjects, setAllUserProjects] = useState<Project[]>([]); // ADDED: State for user projects
+  const [isLoadingUserProjects, setIsLoadingUserProjects] = useState(true); // ADDED: State for loading projects
+  const [activeFilterProjectId, setActiveFilterProjectId] = useState<string | null>(null); // ADDED: State for active project filter
+
   // const router = useRouter(); // REMOVE Next.js useRouter
   // const searchParams = useSearchParams(); // REMOVE Next.js useSearchParams
   const navigate = useNavigate(); // Initialize TanStack useNavigate
@@ -92,10 +124,11 @@ const DiaryPage = () => {
         content: "", // Start with empty content
         manual_mood_label: "neutral", // Default mood for new draft
         is_draft: true, // Mark as draft
+        project_id: activeFilterProjectId || undefined, // ADDED: Associate with active project if one is selected
       };
       const newDiaryEntry = await createJournalEntry(supabase, newEntryBasics as Partial<JournalEntry>);
       if (newDiaryEntry && newDiaryEntry.id) {
-        setDiaries(prevDiaries => [{ ...newDiaryEntry, tag_ids: [] }, ...prevDiaries].sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime()));
+        setDiaries(prevDiaries => [{ ...newDiaryEntry, tag_ids: [] }, ...prevDiaries].sort(sortDiariesByEntryTimestamp));
         setSelectedDiaryId(newDiaryEntry.id); // Select the new diary
       } else {
         setError("Failed to create new diary entry in the database.");
@@ -104,7 +137,7 @@ const DiaryPage = () => {
       console.error("Error creating new diary:", err);
       setError("An error occurred while creating the new diary.");
     }
-  }, [userId, supabase]);
+  }, [userId, supabase, activeFilterProjectId]);
 
   // Effect to handle 'createNew' search parameter
   useEffect(() => {
@@ -112,7 +145,7 @@ const DiaryPage = () => {
       if (!createNewHandledRef.current) { // Check if already handled
         if (userId && supabase) {
           createNewHandledRef.current = true; // Mark as handled
-          handleCreateNew();
+          handleCreateNew(); // MODIFIED: Call without arguments, it will use activeFilterProjectId from state
           navigate({
             to: routerLocation.pathname, // Use current pathname
             search: (prev: DiaryPageSearch) => {
@@ -141,7 +174,7 @@ const DiaryPage = () => {
       // If createNew is not true in the search params, reset the flag
       createNewHandledRef.current = false;
     }
-  }, [search.createNew, userId, supabase, handleCreateNew, navigate, routerLocation.pathname]);
+  }, [search.createNew, userId, supabase, handleCreateNew, navigate, routerLocation.pathname]); // MODIFIED: No longer pass activeFilterProjectId to handleCreateNew
 
   // Fetch initial diaries and user tags
   useEffect(() => {
@@ -171,7 +204,7 @@ const DiaryPage = () => {
 
           const diariesWithTags = await Promise.all(diariesWithTagsPromises);
 
-          const sortedDiaries = diariesWithTags.sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime());
+          const sortedDiaries = diariesWithTags.sort(sortDiariesByEntryTimestamp);
           setDiaries(sortedDiaries);
 
           if (sortedDiaries.length > 0 && !selectedDiaryId) {
@@ -198,6 +231,19 @@ const DiaryPage = () => {
           // Optionally set an error state for tags
           setIsLoadingUserTags(false);
         });
+
+      // Fetch user projects
+      setIsLoadingUserProjects(true);
+      getProjectsByUserId(supabase, userId)
+        .then(projects => {
+          setAllUserProjects(projects || []);
+          setIsLoadingUserProjects(false);
+        })
+        .catch(err => {
+          console.error("Error fetching user projects:", err);
+          // Optionally set an error state for projects
+          setIsLoadingUserProjects(false);
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, supabase]);
@@ -216,7 +262,7 @@ const DiaryPage = () => {
       if (updatedEntry) {
         setDiaries(prevDiaries => 
           prevDiaries.map(d => d.id === selectedDiaryId ? { ...d, ...updatedEntry } : d)
-                     .sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime())
+                     .sort(sortDiariesByEntryTimestamp)
         );
         // Optionally, you could re-fetch or just update local state
       } else {
@@ -267,6 +313,10 @@ const DiaryPage = () => {
     setActiveFilterTagIds(prev =>
       prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
     );
+  };
+
+  const handleProjectFilterClick = (projectId: string | null) => { // ADDED: Handler for project filter click
+    setActiveFilterProjectId(prev => (prev === projectId ? null : projectId)); // Toggle or set, null to clear
   };
 
   // Calendar related logic from TodoPage
@@ -321,6 +371,11 @@ const DiaryPage = () => {
       });
     }
 
+    // Filter by selected project
+    if (activeFilterProjectId) { // ADDED: Project ID filter
+      tempDiaries = tempDiaries.filter(diary => diary.project_id === activeFilterProjectId);
+    }
+
     // Filter by selected date
     if (selectedDate && !(selectedDate instanceof Array)) { // Ensure selectedDate is a single date
         const filterDate = new Date(selectedDate);
@@ -334,7 +389,7 @@ const DiaryPage = () => {
     }
 
     return tempDiaries;
-  }, [diaries, searchQuery, activeFilterTagIds, selectedDate]);
+  }, [diaries, searchQuery, activeFilterTagIds, selectedDate, activeFilterProjectId]);
 
   const selectedDiary = filteredDiaries.find(diary => diary.id === selectedDiaryId);
   // If selected diary is filtered out, try to find it in the original diaries list
@@ -395,6 +450,40 @@ const DiaryPage = () => {
               </div>
             ) : (
               <p className="text-xs text-slate-400" style={{ fontFamily: 'Readex Pro, sans-serif' }}>No tags created yet.</p>
+            )}
+          </div>
+
+          {/* Project Filters Section */}
+          <div className="mt-4">
+            <h2 className="text-sm font-medium text-slate-500 mb-2" style={{ fontFamily: 'Readex Pro, sans-serif' }}>Filter by Project:</h2>
+            {isLoadingUserProjects ? (
+              <p className="text-xs text-slate-400">Loading projects...</p>
+            ) : allUserProjects.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allUserProjects.map(project => (
+                  <button
+                    key={project.id}
+                    onClick={() => handleProjectFilterClick(project.id!)}
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors duration-150 ease-in-out shadow-sm`}
+                    style={
+                      activeFilterProjectId === project.id!
+                        ? { backgroundColor: project.color_hex || '#007AFF', color: getContrastColor(project.color_hex || '#007AFF'), borderColor: project.color_hex || '#007AFF' }
+                        : { backgroundColor: '#F3F4F6', color: '#374151', borderColor: '#D1D5DB', fontFamily: 'Readex Pro, sans-serif' }
+                    }
+                  >
+                    {project.name}
+                  </button>
+                ))}
+                <button
+                  onClick={() => handleProjectFilterClick(null)} // Clear project filter
+                  className={`px-2.5 py-1 text-xs rounded-md border transition-colors duration-150 ease-in-out shadow-sm ${!activeFilterProjectId ? 'bg-slate-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+                  style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                >
+                  All Projects
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400" style={{ fontFamily: 'Readex Pro, sans-serif' }}>No projects created yet.</p>
             )}
           </div>
 
@@ -487,9 +576,11 @@ const DiaryPage = () => {
           <p className="text-slate-500 text-center py-10">No diaries match your selected tags.</p>
         ) : selectedDate && filteredDiaries.length === 0 ? ( 
             <p className="text-slate-500 text-center py-10">No diaries found for {selectedDate.toLocaleDateString()}.</p>
+        ) : activeFilterProjectId && filteredDiaries.length === 0 ? ( // ADDED: Message for no diaries matching project filter
+            <p className="text-slate-500 text-center py-10">No diaries found for the selected project.</p>
         ) : diaries.length === 0 ? (
           <p className="text-slate-500 text-center py-10">No diaries yet. Click "Create New Diary" to start!</p>
-        ) : filteredDiaries.length === 0 && (searchQuery || activeFilterTagIds.length > 0 || selectedDate) ? (
+        ) : filteredDiaries.length === 0 && (searchQuery || activeFilterTagIds.length > 0 || selectedDate || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
             <p className="text-slate-500 text-center py-10">No diaries match your current filters.</p>
         ) : (
           <div className="space-y-3">
@@ -536,7 +627,7 @@ const DiaryPage = () => {
               Create Your First Diary
             </button>
           </div>
-        ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0) ? (
+        ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0 || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
           <div className="text-center py-10 flex flex-col items-center justify-center h-full">
             <h2 className="text-2xl font-semibold text-slate-600">
               No Matching Diaries

@@ -9,6 +9,7 @@ import Testimonials from '@/components/testimonials';
 import Faq from '@/components/faqs';
 import Cta from '@/components/call-to-action';
 import { HeroHeader } from "@/components/hero5-header";
+import TeamSection from '@/components/team';
 
 // Import landing page specific styles
 import '../landing-page-theme.css'; 
@@ -41,6 +42,7 @@ function Index() {
         <Features />
         {/* <Features10 /> */}
         <Testimonials />
+        <TeamSection />
         <Faq />
         <Cta />
       </main>

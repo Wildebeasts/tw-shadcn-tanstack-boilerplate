@@ -6,14 +6,13 @@ import {
   Image as ImageIcon,
   Trash2,
   Share2,
-  BarChart2,
   PlusCircle,
   CalendarDays,
-  Smile,
   Tags as TagsIcon,
   Pin,
   Check,
   SquareUserRound,
+  TrendingUp,
 } from "lucide-react";
 import { useClerk, useSession } from "@clerk/clerk-react";
 import ActivityCalendar from "@/components/ui/ActivityCalendar";
@@ -25,8 +24,63 @@ import { createClerkSupabaseClient } from "@/utils/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Link } from "@tanstack/react-router";
 import PhotoGallery from "@/components/PhotoGallery";
+import { moodOptions, type MoodOption } from "@/components/diary/MoodSelector";
 
 const defaultCoverBg = "rgba(209, 213, 219, 0.5)";
+
+// Define a type for mood counts
+interface MoodCounts {
+  [mood: string]: number;
+}
+
+interface DailyMoodDaySummary {
+  date: Date;
+  dayAbbreviation: string;
+  dayOfMonth: string;
+  moodCountsToday: MoodCounts;
+  moodSegments: Array<{
+    mood: MoodOption;
+    count: number;
+    color: string;
+    heightPercent: number;
+  }>;
+  totalEntriesToday: number;
+}
+
+// Helper function to determine text color based on background brightness (inspired by DiaryCard.tsx)
+const getContrastColor = (hexcolor?: string): string => {
+  if (!hexcolor) return '#000000'; // Default to black if no color
+  hexcolor = hexcolor.replace("#", "");
+  if (hexcolor.length === 3) {
+    hexcolor = hexcolor.split('').map(char => char + char).join('');
+  }
+  if (hexcolor.length !== 6) {
+    return '#000000'; // Fallback for invalid hex
+  }
+  const r = parseInt(hexcolor.substring(0, 2), 16);
+  const g = parseInt(hexcolor.substring(2, 4), 16);
+  const b = parseInt(hexcolor.substring(4, 6), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#FFFFFF'; // Return black for light backgrounds, white for dark
+};
+
+const getMoodBarColor = (moodValue: string | undefined): string => {
+  if (!moodValue) return "bg-gray-300"; // Default color for no mood
+  switch (moodValue.toLowerCase()) {
+    case "amazing":
+      return "bg-yellow-300"; // As per user image (happy/yellow)
+    case "happy":
+      return "bg-yellow-400"; // Slightly different yellow or same as amazing
+    case "neutral":
+      return "bg-sky-300";   // As per user image (neutral/light blue)
+    case "sad":
+      return "bg-orange-300"; // As per user image (sad/orange-peach)
+    case "mad":
+      return "bg-pink-400";   // As per user image (mad/pinkish-red)
+    default:
+      return "bg-gray-400"; // Fallback
+  }
+};
 
 // Helper function to parse BlockNote JSON content
 // This function will now return an object: { textContent: string, imageUrl: string | null }
@@ -71,11 +125,86 @@ const parseBlockNoteJsonContent = (
   }
 };
 
-// Helper for Streak Card day abbreviations
-const getDayAbbreviationForStreak = (date: Date): string => {
+// Helper for local day abbreviations
+const getLocalDayAbbreviation = (date: Date): string => {
   const days = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
   return days[date.getDay()];
 };
+
+// Helper for Streak Card day abbreviations, respecting a target timezone
+const getDayAbbreviationForStreakInTimezone = (date: Date, timeZone: string): string => {
+  const parts = getDatePartsInTimezone(date, timeZone);
+  const dateAtMidnightInTargetZoneAsUTC = new Date(Date.UTC(parts.year, parts.monthIndex, parts.day));
+  const dayOfWeek = dateAtMidnightInTargetZoneAsUTC.getUTCDay();
+  const dayAbbreviations = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+  return dayAbbreviations[dayOfWeek];
+};
+
+// Helper function to sort journal entries by entry_timestamp robustly
+// Sorts in descending order (newest first)
+// Null or invalid timestamps are sorted towards the end
+const sortJournalEntriesByTimestamp = (a: JournalEntry, b: JournalEntry) => {
+  const tsA = a.entry_timestamp;
+  const tsB = b.entry_timestamp;
+
+  // Handle cases where timestamps might be null or undefined
+  if ((tsA === null || tsA === undefined) && (tsB === null || tsB === undefined)) return 0;
+  if (tsA === null || tsA === undefined) return 1; // null/undefined timestamps sort after valid ones
+  if (tsB === null || tsB === undefined) return -1; // null/undefined timestamps sort after valid ones
+
+  const dateA = new Date(tsA).getTime();
+  const dateB = new Date(tsB).getTime();
+
+  // Handle NaN (invalid date string after conversion)
+  const aIsNaN = isNaN(dateA);
+  const bIsNaN = isNaN(dateB);
+
+  if (aIsNaN && bIsNaN) return 0;
+  // Sort NaNs after valid dates
+  if (aIsNaN) return 1;
+  if (bIsNaN) return -1;
+
+  return dateB - dateA; // Descending order (newest first)
+};
+
+// --- START TIMEZONE HELPER ---
+const TARGET_TIMEZONE = 'Asia/Bangkok';
+
+// Utility to get date parts in a specific timezone
+const getDatePartsInTimezone = (
+  date: Date,
+  timeZone: string
+): { year: number; monthIndex: number; day: number; monthShortName: string; dateString: string } => {
+  // For year, month, day numeric parts using 'en-CA' for YYYY-MM-DD format
+  const ymdFormatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' often yields YYYY-MM-DD
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const formattedDateStr = ymdFormatter.format(date); // Expected: YYYY-MM-DD
+
+  const partsArray = formattedDateStr.split('-');
+  const year = parseInt(partsArray[0], 10);
+  const monthIndex = parseInt(partsArray[1], 10) - 1; // 0-indexed for JS
+  const day = parseInt(partsArray[2], 10);
+
+  // For short month name
+  const monthNamer = new Intl.DateTimeFormat('en-US', { // Using 'en-US' for standard short month names
+    timeZone,
+    month: 'short',
+  });
+  const monthShortName = monthNamer.format(date);
+
+  return {
+    year,
+    monthIndex,
+    day,
+    monthShortName,
+    dateString: formattedDateStr, // YYYY-MM-DD
+  };
+};
+// --- END TIMEZONE HELPER ---
 
 const UserProfilePage = () => {
   const { user } = useClerk();
@@ -92,6 +221,7 @@ const UserProfilePage = () => {
   );
   const [latestDiaryTags, setLatestDiaryTags] = useState<Tag[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "photos">("overview");
+  const [dailyMoodSummary, setDailyMoodSummary] = useState<DailyMoodDaySummary[]>([]);
 
   const activeSupabaseClient: SupabaseClient | null = useMemo(() => {
     if (session) {
@@ -114,11 +244,7 @@ const UserProfilePage = () => {
         .then(async (data: JournalEntry[] | null) => {
           if (data && data.length > 0) {
             setUserJournalEntries(data);
-            const sortedEntries = [...data].sort(
-              (a, b) =>
-                new Date(b.entry_timestamp).getTime() -
-                new Date(a.entry_timestamp).getTime()
-            );
+            const sortedEntries = [...data].sort(sortJournalEntriesByTimestamp);
             const diaryEntry = sortedEntries[0];
             setLatestDiary(diaryEntry);
             const parsedContent = parseBlockNoteJsonContent(diaryEntry.content);
@@ -151,6 +277,65 @@ const UserProfilePage = () => {
         });
     }
   }, [user?.id, activeSupabaseClient]);
+
+  useEffect(() => {
+    const today = new Date();
+    const summary: DailyMoodDaySummary[] = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() - i);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const entriesOnThisDay = userJournalEntries.filter((entry) => {
+        const entryDate = new Date(entry.entry_timestamp);
+        entryDate.setHours(0, 0, 0, 0);
+        return entryDate.getTime() === targetDate.getTime();
+      });
+
+      const moodCountsToday: MoodCounts = {};
+      entriesOnThisDay.forEach((entry) => {
+        if (entry.manual_mood_label) {
+          moodCountsToday[entry.manual_mood_label] =
+            (moodCountsToday[entry.manual_mood_label] || 0) + 1;
+        }
+      });
+
+      const segments: DailyMoodDaySummary['moodSegments'] = [];
+      let totalEntriesForSegments = 0;
+      
+      // Iterate through moodOptions to maintain a consistent order in stacked bars
+      moodOptions.forEach(moodOpt => {
+        const count = moodCountsToday[moodOpt.value] || 0;
+        if (count > 0) {
+          segments.push({
+            mood: moodOpt,
+            count: count,
+            color: getMoodBarColor(moodOpt.value),
+            heightPercent: 0, // Will be calculated later
+          });
+          totalEntriesForSegments += count;
+        }
+      });
+      
+      // Calculate heightPercent for each segment
+      segments.forEach(segment => {
+        if (totalEntriesForSegments > 0) {
+          segment.heightPercent = (segment.count / totalEntriesForSegments) * 100;
+        }
+      });
+
+      summary.push({
+        date: targetDate,
+        dayAbbreviation: getLocalDayAbbreviation(targetDate),
+        dayOfMonth: targetDate.getDate().toString(),
+        moodCountsToday,
+        moodSegments: segments,
+        totalEntriesToday: totalEntriesForSegments, // Use this for bar height scaling
+      });
+    }
+    setDailyMoodSummary(summary);
+  }, [userJournalEntries]);
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -462,7 +647,7 @@ const UserProfilePage = () => {
                                   )}
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {getDayAbbreviationForStreak(date)}
+                                  {getDayAbbreviationForStreakInTimezone(date, TARGET_TIMEZONE)}
                                 </span>
                               </div>
                             );
@@ -474,16 +659,78 @@ const UserProfilePage = () => {
 
                   <div>
                     <h2 className="text-xl font-semibold mb-3">
-                      Mood Stat This Week
+                      Mood chart
                     </h2>
-                    <div className="p-4 bg-white/30 dark:bg-slate-800/40 backdrop-blur-md rounded-lg shadow-lg">
-                      <BarChart2
-                        size={64}
-                        className="mx-auto text-gray-400 dark:text-gray-500"
-                      />
-                      <p className="text-center text-sm text-gray-500 mt-2">
-                        Mood chart will appear here.
-                      </p>
+                    <div className="p-4 bg-white/30 dark:bg-slate-800/40 backdrop-blur-md rounded-lg shadow-lg min-h-[280px]">
+                      {/* Legend Section Start */}
+                      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-3 text-xs">
+                        {moodOptions.map(opt => (
+                          <div key={opt.value} className="flex items-center">
+                            <img src={opt.emojiPath} alt={opt.label} className="w-4 h-4 mr-1.5" />
+                            <span className="text-gray-700 dark:text-gray-300 capitalize">
+                              {opt.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Legend Section End */}
+                      <div className="mb-2 text-center">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {new Date().toLocaleString('default', { month: 'long' })}
+                        </span>
+                        {/* Add prev/next month controls here if needed */}
+                      </div>
+                      {dailyMoodSummary.length > 0 ? (
+                        <div className="flex justify-around items-end h-48">
+                          {dailyMoodSummary.map((dayData, index) => {
+                            const maxEntriesInWeek = Math.max(...dailyMoodSummary.map(d => d.totalEntriesToday), 1);
+                            const dayTotalBarHeightPercentage = dayData.totalEntriesToday > 0 ? (dayData.totalEntriesToday / maxEntriesInWeek) * 100 : 0;
+
+                            return (
+                              <div key={index} className="flex flex-col items-center space-y-1 w-1/7 px-0.5">
+                                <div 
+                                  className="h-40 w-8 md:w-10 flex flex-col justify-end items-center relative rounded-t-md overflow-hidden bg-gray-200 dark:bg-gray-700/50"
+                                  style={{ height: '10rem' }} // Fixed height for the bar area
+                                >
+                                  {dayData.totalEntriesToday > 0 ? (
+                                    <div 
+                                      className="w-full flex flex-col justify-end items-stretch"
+                                      style={{ height: `${dayTotalBarHeightPercentage}%` }}
+                                    >
+                                      {dayData.moodSegments.map((segment, segIndex) => (
+                                        <div
+                                          key={segIndex}
+                                          className={`${segment.color} w-full transition-all duration-300 ease-in-out`}
+                                          style={{ height: `${segment.heightPercent}%` }}
+                                          title={`${segment.mood.label}: ${segment.count}`}
+                                        ></div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="w-full h-full"></div> // Placeholder for no entries
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {dayData.dayAbbreviation}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                  {dayData.dayOfMonth}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full pt-8">
+                          <TrendingUp
+                            size={48}
+                            className="mx-auto text-gray-400 dark:text-gray-500"
+                          />
+                          <p className="text-center text-sm text-gray-500 mt-2">
+                            Your mood chart will appear here once you log entries.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -492,10 +739,12 @@ const UserProfilePage = () => {
                       to="/journal/diary"
                       className="block cursor-pointer group"
                     >
-                      <h2 className="text-xl font-semibold mb-3 text-[#2F2569] dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      <h2 className="text-xl font-semibold mb-3 text-[#2F2569] dark:text-gray-200">
                         Latest Diary
                       </h2>
-                      <div className="bg-[#99BC85] dark:bg-[#7E9C6F] p-4 sm:p-6 rounded-lg shadow-xl relative text-gray-800 dark:text-gray-100 group-hover:shadow-2xl transition-shadow">
+                      <div 
+                        className="p-4 sm:p-5 rounded-lg shadow-md relative group text-gray-800 dark:text-gray-100 transition-all duration-200 ease-in-out border bg-[#F5F8F4] hover:bg-[#E9F0E6] border-[#DDE8DA] hover:border-[#CFE0CA] dark:bg-slate-700/70 dark:hover:bg-slate-700/90 dark:border-slate-600 dark:hover:border-slate-500"
+                      >
                         <div className="grid grid-cols-12 gap-4 items-start">
                           <div className="col-span-3 md:col-span-2 flex items-center justify-center">
                             <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gray-300/50 dark:bg-gray-700/50 rounded-lg flex items-center justify-center overflow-hidden">
@@ -516,23 +765,34 @@ const UserProfilePage = () => {
 
                           <div className="col-span-9 md:col-span-7">
                             {latestDiary.title && (
-                              <h3 className="text-lg sm:text-xl font-semibold mb-1 text-gray-900 dark:text-white">
+                              <h3 
+                                className="text-lg font-semibold mb-1 text-slate-700 dark:text-slate-200 truncate"
+                                style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                              >
                                 {latestDiary.title}
                               </h3>
                             )}
-                            <p className="text-sm sm:text-base leading-relaxed whitespace-pre-line line-clamp-3 group-hover:line-clamp-none">
+                            <p 
+                              className="text-sm leading-relaxed whitespace-pre-line line-clamp-3 group-hover:line-clamp-none text-slate-500 dark:text-slate-400 mb-2"
+                              style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                            >
                               {readableDiaryContent || "Content not available."}
                             </p>
                             {latestDiaryTags.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-2 items-center">
+                              <div className="mt-2 mb-2.5 flex flex-wrap gap-1.5 items-center">
                                 <TagsIcon
                                   size={16}
-                                  className="text-gray-700 dark:text-gray-300"
+                                  className="text-slate-500 dark:text-slate-400"
                                 />
                                 {latestDiaryTags.map((tag) => (
                                   <span
                                     key={tag.id}
-                                    className="text-xs bg-white/50 dark:bg-black/20 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full"
+                                    className="text-xs px-2 py-1 rounded-md shadow-sm border border-black/10 dark:border-white/10"
+                                    style={{
+                                      fontFamily: 'Readex Pro, sans-serif',
+                                      backgroundColor: tag.color_hex || '#E9E9E9',
+                                      color: getContrastColor(tag.color_hex || '#E9E9E9'),
+                                    }}
                                   >
                                     {tag.name}
                                   </span>
@@ -543,19 +803,30 @@ const UserProfilePage = () => {
 
                           <div className="col-span-12 md:col-span-3 flex flex-col items-center md:items-end mt-2 md:mt-0">
                             {latestDiary.manual_mood_label && (
-                              <div className="flex flex-col items-center mb-2">
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/30 dark:bg-slate-700/50 rounded-full flex items-center justify-center mb-1">
-                                  <Smile
-                                    size={24}
-                                    className="text-gray-600 dark:text-gray-300"
-                                  />
-                                </div>
-                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                              <div className="flex flex-col items-center md:items-end mb-2">
+                                {(() => {
+                                  const moodOption = moodOptions.find(m => m.value === latestDiary.manual_mood_label);
+                                  return moodOption ? (
+                                    <img
+                                      src={moodOption.emojiPath}
+                                      alt={moodOption.label}
+                                      className="w-8 h-8 mb-1"
+                                      title={`Mood: ${moodOption.label}`}
+                                    />
+                                  ) : null;
+                                })()}
+                                <span 
+                                  className="text-xs font-medium text-slate-600 dark:text-slate-400"
+                                  style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                                >
                                   {latestDiary.manual_mood_label}
                                 </span>
                               </div>
                             )}
-                            <div className="flex items-center text-xs sm:text-sm mt-6 text-gray-700 dark:text-gray-300">
+                            <div 
+                              className="flex items-center text-xs mt-1 text-slate-400 dark:text-slate-500"
+                              style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                            >
                               <CalendarDays size={14} className="mr-1.5" />
                               <span>
                                 {latestDiary.entry_timestamp
@@ -576,21 +847,21 @@ const UserProfilePage = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="w-7 h-7 text-gray-700 dark:text-gray-300 hover:bg-white/30 dark:hover:bg-black/20 rounded-full"
+                            className="w-7 h-7 text-slate-600 dark:text-slate-300 hover:bg-white/30 dark:hover:bg-black/20 rounded-full"
                           >
                             <Share2 size={16} />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="w-7 h-7 text-gray-700 dark:text-gray-300 hover:bg-white/30 dark:hover:bg-black/20 rounded-full"
+                            className="w-7 h-7 text-slate-600 dark:text-slate-300 hover:bg-white/30 dark:hover:bg-black/20 rounded-full"
                           >
                             <Edit3 size={16} />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="w-7 h-7 text-red-600 dark:text-red-400 hover:bg-red-100/50 dark:hover:bg-red-900/30 rounded-full"
+                            className="w-7 h-7 text-red-500 dark:text-red-400 hover:bg-red-100/50 dark:hover:bg-red-900/30 rounded-full"
                           >
                             <Trash2 size={16} />
                           </Button>
@@ -599,12 +870,15 @@ const UserProfilePage = () => {
                     </Link>
                   ) : (
                     <div>
-                      <h2 className="text-xl font-semibold mb-3">
+                      <h2 className="text-xl font-semibold mb-3 text-[#2F2569] dark:text-gray-200">
                         Latest Diary
                       </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No diary entries yet or still loading...
-                      </p>
+                      <div className="p-4 rounded-lg border bg-[#F5F8F4] dark:bg-slate-700/70 border-[#DDE8DA] dark:border-slate-600 min-h-[100px] flex flex-col items-center justify-center">
+                        <ImageIcon size={32} className="text-slate-400 dark:text-slate-500 mb-2" />
+                        <p className="text-sm text-slate-500 dark:text-slate-400" style={{ fontFamily: 'Readex Pro, sans-serif' }}>
+                          No diary entries yet or still loading...
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

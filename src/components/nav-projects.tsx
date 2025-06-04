@@ -2,9 +2,12 @@ import {
   Folder,
   Share,
   Trash2,
-  type LucideIcon,
+  Pencil,
+  FolderKanban,
 } from "lucide-react"
 import { Link } from "@tanstack/react-router";
+import type { Project } from "@/types/supabase";
+import { Route as ProjectRouteDefinition } from "@/routes/journal/project/$projectId";
 
 import {
   DropdownMenu,
@@ -15,7 +18,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -26,62 +28,71 @@ import { DotsHorizontalIcon } from "@radix-ui/react-icons"
 
 export function NavProjects({
   projects,
+  onEditProject,
+  onDeleteProject
 }: {
-  projects: {
-    name: string
-    url: string
-    icon: LucideIcon
-  }[]
+  projects: Project[];
+  onEditProject: (project: Project) => void;
+  onDeleteProject: (projectId: string) => void;
 }) {
   const { isMobile } = useSidebar()
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel className="text-[#1e1742]/70 dark:text-white/70">Projects</SidebarGroupLabel>
       <SidebarMenu>
-        {projects.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild>
-              <Link to={item.url}>
-                <item.icon />
-                <span>{item.name}</span>
-              </Link>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuAction showOnHover>
-                  <DotsHorizontalIcon />
-                  <span className="sr-only">More</span>
-                </SidebarMenuAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-48"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
-                <DropdownMenuItem>
-                  <Folder className="text-muted-foreground" />
-                  <span>View Project</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Share className="text-muted-foreground" />
-                  <span>Share Project</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Trash2 className="text-muted-foreground" />
-                  <span>Delete Project</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton>
-            <DotsHorizontalIcon />
-            <span>More</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {projects.map((project) => {
+          const IconComponent = FolderKanban;
+          if (!project.id) return null;
+
+          return (
+            <SidebarMenuItem key={project.id}>
+              <SidebarMenuButton asChild>
+                <Link
+                  to={ProjectRouteDefinition.to}
+                  params={{ projectId: project.id }}
+                >
+                  <IconComponent className="w-4 h-4 mr-2" />
+                  <span>{project.name}</span>
+                </Link>
+              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuAction showOnHover>
+                    <DotsHorizontalIcon />
+                    <span className="sr-only">More options for {project.name}</span>
+                  </SidebarMenuAction>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-48"
+                  side={isMobile ? "bottom" : "right"}
+                  align={isMobile ? "end" : "start"}
+                >
+                  <DropdownMenuItem onSelect={() => {
+                    console.log("View project action for", project.name);
+                  }}>
+                    <Folder className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>View Project</span>
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem onSelect={() => onEditProject(project)}>
+                    <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Edit Project</span>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onSelect={() => {}}>
+                    <Share className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Share Project</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => onDeleteProject(project.id!)} className="text-red-600 hover:!text-red-600 hover:!bg-red-50 dark:hover:!bg-red-900/50 dark:text-red-500 dark:hover:!text-red-400">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    <span>Delete Project</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          );
+        })}
       </SidebarMenu>
     </SidebarGroup>
   )
