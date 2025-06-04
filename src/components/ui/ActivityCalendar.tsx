@@ -23,22 +23,54 @@ const defaultColors = {
   noActivity: 'rgba(209, 213, 219, 0.3)',
 };
 
+// --- START TIMEZONE HELPER ---
+const TARGET_TIMEZONE = 'Asia/Bangkok';
+
+// Utility to get date parts in a specific timezone
+const getDatePartsInTimezone = (
+  date: Date,
+  timeZone: string
+): { year: number; monthIndex: number; day: number; monthShortName: string; dateString: string } => {
+  // For year, month, day numeric parts using 'en-CA' for YYYY-MM-DD format
+  const ymdFormatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' often yields YYYY-MM-DD
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const formattedDateStr = ymdFormatter.format(date); // Expected: YYYY-MM-DD
+
+  const partsArray = formattedDateStr.split('-');
+  const year = parseInt(partsArray[0], 10);
+  const monthIndex = parseInt(partsArray[1], 10) - 1; // 0-indexed for JS
+  const day = parseInt(partsArray[2], 10);
+
+  // For short month name
+  const monthNamer = new Intl.DateTimeFormat('en-US', { // Using 'en-US' for standard short month names
+    timeZone,
+    month: 'short',
+  });
+  const monthShortName = monthNamer.format(date);
+
+  return {
+    year,
+    monthIndex,
+    day,
+    monthShortName,
+    dateString: formattedDateStr, // YYYY-MM-DD
+  };
+};
+// --- END TIMEZONE HELPER ---
+
 const getPastNDays = (n: number, endDate: Date = new Date()): Date[] => {
   const normalizedEndDate = new Date(endDate);
-  normalizedEndDate.setHours(0, 0, 0, 0);
+  normalizedEndDate.setHours(0, 0, 0, 0); // Normalizes to midnight in local browser TZ for sequence generation
   return Array.from({ length: n }, (_, i) => {
     const date = new Date(normalizedEndDate);
     date.setDate(normalizedEndDate.getDate() - (n - 1 - i));
     return date;
   });
 };
-
-const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-// Helper to get month names
-const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
   journalEntries, // Changed from activityData
@@ -51,7 +83,7 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
 
   useEffect(() => {
     const elem = containerRef.current;
-    if (!elem) { // If no element, do nothing
+    if (!elem) {
       return;
     }
 
@@ -69,31 +101,26 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
             if (calculatedWeeks !== numberOfWeeks) { 
               setNumberOfWeeks(calculatedWeeks);
             }
-          }, 150); // 150ms debounce delay
+          }, 150);
         }
       }
     });
 
-    // Start observing the element. The observer will fire when size is known.
     observer.observe(elem);
 
     return () => {
-      // Use the captured 'elem' for unobserve to ensure it's the same element instance
       observer.unobserve(elem); 
-      // Disconnect the observer as a new one will be created if the effect re-runs
       observer.disconnect(); 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numberOfWeeks, MIN_WEEKS, DESIRED_WEEK_COLUMN_WIDTH]); // Added MIN_WEEKS and DESIRED_WEEK_COLUMN_WIDTH to dependencies as they are used in effect
+  }, [numberOfWeeks]); // Removed MIN_WEEKS and DESIRED_WEEK_COLUMN_WIDTH as they are constants
 
   const numDaysToDisplay = useMemo(() => numberOfWeeks * 7, [numberOfWeeks]);
 
-  // Recalculate displayDays whenever currentEndDate or numDaysToDisplay changes
   const displayDays = useMemo(() => {
-    // console.log(`Recalculating displayDays for ${numDaysToDisplay} days ending ${currentEndDate}`);
     return getPastNDays(numDaysToDisplay, currentEndDate);
   }, [numDaysToDisplay, currentEndDate]);
   
@@ -101,7 +128,8 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
     const map = new Map<string, number>();
     if (!journalEntries || journalEntries.length === 0) {
       displayDays.forEach(day => {
-        map.set(formatDate(day), 0); // Default to 0 activity if no entries
+        const { dateString: dayStrInBangkok } = getDatePartsInTimezone(day, TARGET_TIMEZONE);
+        map.set(dayStrInBangkok, 0);
       });
       return map;
     }
@@ -109,14 +137,17 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
     const entryCountsByDate = new Map<string, number>();
     journalEntries.forEach(entry => {
       if (entry.entry_timestamp) {
-        const entryDateStr = formatDate(new Date(entry.entry_timestamp));
-        entryCountsByDate.set(entryDateStr, (entryCountsByDate.get(entryDateStr) || 0) + 1);
+        const { dateString: entryDateStrInBangkok } = getDatePartsInTimezone(
+          new Date(entry.entry_timestamp),
+          TARGET_TIMEZONE
+        );
+        entryCountsByDate.set(entryDateStrInBangkok, (entryCountsByDate.get(entryDateStrInBangkok) || 0) + 1);
       }
     });
 
     displayDays.forEach(day => {
-      const dateStr = formatDate(day);
-      const count = entryCountsByDate.get(dateStr) || 0;
+      const { dateString: dayStrInBangkok } = getDatePartsInTimezone(day, TARGET_TIMEZONE);
+      const count = entryCountsByDate.get(dayStrInBangkok) || 0;
       let level = 0;
       if (count === 1) {
         level = 1;
@@ -127,7 +158,7 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
       } else if (count >= 4) {
         level = 4;
       }
-      map.set(dateStr, level);
+      map.set(dayStrInBangkok, level);
     });
 
     return map;
@@ -144,16 +175,15 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
   };
 
   const { finalCellsToRender, actualColumnsToRenderValue } = useMemo(() => {
-    // console.log('Recalculating finalCellsToRender and related values');
     if (displayDays.length === 0) {
         return { finalCellsToRender: [], actualColumnsToRenderValue: numberOfWeeks };
     }
     const firstDay = displayDays[0];
-    const dayOfWeekForFirst = firstDay.getDay(); // 0 (Sun) - 6 (Sat)
+    // dayOfWeekForFirst is based on local browser time; this is for visual grid alignment (e.g. Sunday as first col)
+    const dayOfWeekForFirst = firstDay.getDay(); 
     const emptyCellsAtStartCount = dayOfWeekForFirst;
     
     const numItemsBeforeEndPadding = emptyCellsAtStartCount + numDaysToDisplay;
-    // actualColumnsToRenderValue should be the same as numberOfWeeks if numDaysToDisplay is a multiple of 7
     const calculatedActualColumns = Math.ceil(numItemsBeforeEndPadding / 7); 
     const totalCellsInRectangle = calculatedActualColumns * 7;
     const paddingCellsAtEndCount = totalCellsInRectangle - numItemsBeforeEndPadding;
@@ -168,50 +198,28 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
 
 
   const monthLabelData = useMemo(() => {
-    // console.log('Recalculating monthLabelData');
     const labels: { name: string; startColumn: number; span: number }[] = [];
-    // Use actualColumnsToRenderValue for the total span of month labels
     if (displayDays.length === 0 || actualColumnsToRenderValue === 0) return labels;
 
-    let currentMonthIndexInYear = -1;
-    const WEEKS_IN_DATA_PERIOD = actualColumnsToRenderValue; // Align with the grid columns
+    let currentMonthIdentifier = ""; // e.g., "2023-Jan"
+    const WEEKS_IN_DATA_PERIOD = actualColumnsToRenderValue;
 
     for (let weekIndex = 0; weekIndex < WEEKS_IN_DATA_PERIOD; weekIndex++) {
-      // const dayIndexOffset = weekIndex * 7; // No longer needed
-      // We only have displayDays for numberOfWeeks, so check boundary carefully
-      // We need to associate a month with each column in WEEKS_IN_DATA_PERIOD
-      // For columns that might be beyond the actual displayDays (if actualColumnsToRenderValue > numberOfWeeks due to padding)
-      // we should try to extend the last known month or handle it gracefully.
-      
-      // Let's find the first day of the week for the current *grid column index* (weekIndex)
-      // This requires considering the initial padding (emptyCellsAtStartCount)
-      // The actual first day of data is displayDays[0]
-      // The number of empty cells before displayDays[0] is displayDays[0].getDay()
-      const firstDayOfWeekForGridColumn = new Date(displayDays[0]);
-      // Adjust to the Sunday before or on displayDays[0]
-      firstDayOfWeekForGridColumn.setDate(displayDays[0].getDate() - displayDays[0].getDay()); 
-      // Now advance by weekIndex weeks
-      firstDayOfWeekForGridColumn.setDate(firstDayOfWeekForGridColumn.getDate() + weekIndex * 7);
+      const firstDayOfGridColumn = new Date(displayDays[0]);
+      // Align to the start of the week (e.g., Sunday) in local time for grid column reference
+      firstDayOfGridColumn.setDate(displayDays[0].getDate() - displayDays[0].getDay());
+      firstDayOfGridColumn.setDate(firstDayOfGridColumn.getDate() + weekIndex * 7);
 
-      // Ensure the day we are inspecting is within a reasonable range of our data
-      // This logic might need refinement if actualColumnsToRenderValue is much larger than numberOfWeeks
-      const dayToConsiderForMonth = firstDayOfWeekForGridColumn;
+      const { year, monthShortName } = getDatePartsInTimezone(firstDayOfGridColumn, TARGET_TIMEZONE);
+      const monthIdForColumn = `${year}-${monthShortName}`;
 
-      // if (dayIndexOffset < displayDays.length) { // This check might be too restrictive now
-      // const dayInWeek = displayDays[dayIndexOffset]; // This might be out of bounds
-      
-      // Use dayToConsiderForMonth if it's valid, otherwise, we might be in a padding column
-      // For now, let's assume dayToConsiderForMonth is good enough for determining month for the column
-      if (dayToConsiderForMonth) {
-        const monthIdx = dayToConsiderForMonth.getMonth();
-        if (monthIdx !== currentMonthIndexInYear) {
-          if (currentMonthIndexInYear !== -1 && labels.length > 0) {
-            const prevMonthData = labels[labels.length - 1];
-            prevMonthData.span = weekIndex - prevMonthData.startColumn;
-          }
-          labels.push({ name: monthNames[monthIdx], startColumn: weekIndex, span: 1 });
-          currentMonthIndexInYear = monthIdx;
+      if (monthIdForColumn !== currentMonthIdentifier) {
+        if (currentMonthIdentifier !== "" && labels.length > 0) {
+          const prevMonthData = labels[labels.length - 1];
+          prevMonthData.span = weekIndex - prevMonthData.startColumn;
         }
+        labels.push({ name: monthShortName, startColumn: weekIndex, span: 1 });
+        currentMonthIdentifier = monthIdForColumn;
       }
     }
 
@@ -222,13 +230,11 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
         if (lastMonthData.span <= 0) lastMonthData.span = 1;
       }
     } else if (WEEKS_IN_DATA_PERIOD > 0 && displayDays.length > 0) {
-        // If no labels were created (e.g. all columns fall into one month that didn't change)
-        // but there are columns and data, create one label spanning all columns.
-        labels.push({ name: monthNames[displayDays[0].getMonth()], startColumn: 0, span: WEEKS_IN_DATA_PERIOD });
+        const { monthShortName } = getDatePartsInTimezone(displayDays[0], TARGET_TIMEZONE);
+        labels.push({ name: monthShortName, startColumn: 0, span: WEEKS_IN_DATA_PERIOD });
     }
     return labels.filter(label => label.span > 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayDays, numberOfWeeks, actualColumnsToRenderValue]); // Added actualColumnsToRenderValue
+  }, [displayDays, actualColumnsToRenderValue]);
 
 
   const handlePrev = () => {
@@ -256,63 +262,58 @@ const ActivityCalendar: React.FC<ActivityCalendarProps> = ({
         <button onClick={handlePrev} className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
           &lt; Prev
         </button>
-        {/* Optional: Display current date range or month/year here */}
         <button onClick={handleNext} className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
           Next &gt;
         </button>
       </div>
-      {/* Month Labels Row */}
       <div className="grid gap-0" style={{ gridTemplateColumns: `repeat(${actualColumnsToRenderValue}, minmax(0, 1fr))`}}>
         {monthLabelData.map((month, index) => (
           <div 
             key={`${month.name}-${index}-${month.startColumn}`}
-            className="text-xs text-gray-700 dark:text-gray-300 py-1 truncate" // Added truncate
-            style={{ gridColumnStart: month.startColumn + 1, gridColumnEnd: `span ${month.span}`, textAlign: 'center' }} // Added text-align
+            className="text-xs text-gray-700 dark:text-gray-300 py-1 truncate"
+            style={{ gridColumnStart: month.startColumn + 1, gridColumnEnd: `span ${month.span}`, textAlign: 'center' }}
           >
             {month.name}
           </div>
         ))}
-        {/* Fill remaining grid if not all columns covered by month labels explicitly - for safety */}
         {actualColumnsToRenderValue > 0 && monthLabelData.reduce((acc, m) => acc + m.span, 0) < actualColumnsToRenderValue &&
             Array.from({length: actualColumnsToRenderValue - monthLabelData.reduce((acc, m) => acc + m.span, 0) }).map((_, i) => <div key={`filler-month-${i}`}></div>)}
       </div>
 
-      {/* Day Cells Grid - Restructured for horizontal flow of weeks */}
       <div 
         className="grid gap-0.5"
         style={{
-          gridTemplateRows: `repeat(7, minmax(0, auto))`, // 7 rows for days of the week
+          gridTemplateRows: `repeat(7, minmax(0, auto))`,
           gridAutoFlow: 'column',
-          gridTemplateColumns: `repeat(${actualColumnsToRenderValue}, minmax(0, auto))` // Columns take cell width
+          gridTemplateColumns: `repeat(${actualColumnsToRenderValue}, minmax(0, auto))`
         }}
       >
         {finalCellsToRender.map((dayOrNull, index) => {
-          // Empty cells (prefix for first week alignment, or fallback)
           if (!dayOrNull) {
             return (
               <div 
                 key={`empty-${index}`} 
-                className="w-4 h-4 border rounded-[4px] sm:rounded-[3px] bg-card" // Fixed size, styled like inactive cells
+                className="w-4 h-4 border rounded-[4px] sm:rounded-[3px] bg-card"
               />
             );
           }
 
           const day = dayOrNull as Date;
-          const dateStr = formatDate(day);
-          const activityLevel = activityMap.get(dateStr);
-          const titleText = `Date: ${dateStr}\nActivity: ${activityLevel !== undefined ? activityLevel : 'No data'}`;
+          const { dateString: dateStrInBangkok } = getDatePartsInTimezone(day, TARGET_TIMEZONE);
+          const activityLevel = activityMap.get(dateStrInBangkok);
+          const titleText = `Date: ${dateStrInBangkok}\\nActivity: ${activityLevel !== undefined ? activityLevel : 'No data'}`;
           const isInactive = activityLevel === undefined || activityLevel === 0;
           const cellBgColor = isInactive ? undefined : getColorForLevel(activityLevel);
 
           return (
             <div
-              key={dateStr}
+              key={dateStrInBangkok} // Use Bangkok date string as key for stability
               title={titleText}
               className={cn(
-                "w-4 h-4 border rounded-[4px] sm:rounded-[3px]", // Fixed size cells
-                isInactive ? "bg-card" : "" // Apply bg-card if inactive
+                "w-4 h-4 border rounded-[4px] sm:rounded-[3px]",
+                isInactive ? "bg-card" : ""
               )}
-              style={{ backgroundColor: cellBgColor }} // Apply dynamic color if active
+              style={{ backgroundColor: cellBgColor }}
             >
             </div>
           );

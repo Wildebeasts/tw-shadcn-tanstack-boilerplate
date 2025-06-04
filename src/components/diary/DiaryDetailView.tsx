@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { JournalEntry, Tag } from "@/types/supabase";
+import { JournalEntry, Tag, Project } from "@/types/supabase";
 import { Modal as AntModal, Select } from "antd";
 import debounce from "lodash/debounce";
 import type { TodoItem as TodoItemType } from "@/types/supabase";
@@ -43,6 +43,7 @@ import { TodoItem } from "../editor/todo/todoItem"; // Import TodoItem
 import { createTodoItem, updateTodoItem, getTodoItemsByEntryId, deleteTodoItem } from "@/services/todoItemService"; // Import services
 import { BsCheck2Square } from "react-icons/bs"; // Icon for the slash command
 import MoodSelector from "./MoodSelector";
+import { getProjectsByUserId } from "@/services/projectService"; // Added for project selection
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -88,6 +89,11 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [initialLoadedTagIds, setInitialLoadedTagIds] = useState<string[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
+
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]); // Added state for projects
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null | undefined>(diary.project_id); // Added state for selected project
+  const [initialProjectId, setInitialProjectId] = useState<string | null | undefined>(diary.project_id); // Added state to track initial project
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false); // Added loading state for projects
 
   const BUCKET_NAME = "media-attachments";
 
@@ -239,13 +245,14 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   });
 
   useEffect(() => {
-    const fetchTags = async () => {
+    const fetchTagsAndProjects = async () => {
       if (!userId || !supabase || !diary.id) return;
+      
+      // Fetch Tags
       setIsLoadingTags(true);
       try {
         const userTags = await getTagsByUserId(supabase, userId);
         setAvailableTags(userTags || []);
-
         const entryTags = await getTagsForEntry(supabase, diary.id);
         const currentEntryTagIds = entryTags.map((tag) => tag.id as string);
         setSelectedTagIds(currentEntryTagIds);
@@ -255,8 +262,20 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       } finally {
         setIsLoadingTags(false);
       }
+
+      // Fetch Projects
+      setIsLoadingProjects(true);
+      try {
+        const projects = await getProjectsByUserId(supabase, userId);
+        setAvailableProjects(projects || []);
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+        setAvailableProjects([]);
+      } finally {
+        setIsLoadingProjects(false);
+      }
     };
-    fetchTags();
+    fetchTagsAndProjects();
   }, [userId, supabase, diary.id]);
 
   useEffect(() => {
@@ -306,7 +325,10 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   useEffect(() => {
     setCurrentSelectedMood(diary.manual_mood_label);
     setInitialMoodLabel(diary.manual_mood_label);
-  }, [diary.manual_mood_label, diary.id]);
+    // Sync selected project ID when diary changes
+    setSelectedProjectId(diary.project_id);
+    setInitialProjectId(diary.project_id);
+  }, [diary.manual_mood_label, diary.id, diary.project_id]);
 
   const handleVideoModalCancel = () => {
     setIsVideoModalVisible(false);
@@ -353,7 +375,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       currentTitle: string,
       currentContentString?: string,
       tagIdsForSave?: string[],
-      moodToSave?: string | undefined | null
+      moodToSave?: string | undefined | null,
+      projectToSaveId?: string | null | undefined // Added project ID to save parameters
     ) => {
       if (!diary.id || !userId || !supabase) {
         console.error("Cannot save, diary ID or user ID is missing.");
@@ -590,6 +613,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           is_draft: false,
           updated_at: new Date().toISOString(),
           manual_mood_label: moodToSave === null ? undefined : moodToSave,
+          project_id: projectToSaveId === null ? undefined : projectToSaveId, // Add project_id to updates
         };
         await onUpdateDiary(coreUpdates);
 
@@ -599,6 +623,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           setInitialDiaryContentString(currentContentString);
         }
         setInitialMoodLabel(moodToSave);
+        setInitialProjectId(projectToSaveId); // Update initial project ID after save
         setHasUnsavedChanges(false);
       } catch (error) {
         console.error("Error saving diary:", error);
@@ -622,8 +647,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const debouncedSave = useMemo(
     () =>
       debounce(
-        (newTitle: string, newContentString?: string, newTagIds?: string[], newMood?: string | undefined | null) => {
-          handleSave(newTitle, newContentString, newTagIds, newMood);
+        (newTitle: string, newContentString?: string, newTagIds?: string[], newMood?: string | undefined | null, newProjectId?: string | null | undefined) => {
+          handleSave(newTitle, newContentString, newTagIds, newMood, newProjectId);
         },
         2000
       ),
@@ -647,6 +672,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       currentEditorContentString !== initialDiaryContentString;
 
     const moodChanged = currentSelectedMood !== initialMoodLabel;
+    const projectChanged = selectedProjectId !== initialProjectId; // Check if project changed
 
     let tagsHaveChangedVsSavedState = false;
     if (selectedTagIds.length !== initialLoadedTagIds.length) {
@@ -659,9 +685,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       );
     }
 
-    if (titleChanged || contentChanged || tagsHaveChangedVsSavedState || moodChanged) {
+    if (titleChanged || contentChanged || tagsHaveChangedVsSavedState || moodChanged || projectChanged) { // Added projectChanged to condition
       setHasUnsavedChanges(true);
-      debouncedSave(editableTitle, currentEditorContentString, selectedTagIds, currentSelectedMood);
+      debouncedSave(editableTitle, currentEditorContentString, selectedTagIds, currentSelectedMood, selectedProjectId); // Pass selectedProjectId
     } else {
       setHasUnsavedChanges(false);
       debouncedSave.cancel();
@@ -680,6 +706,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     debouncedSave,
     currentSelectedMood,
     initialMoodLabel,
+    selectedProjectId, // Added selectedProjectId
+    initialProjectId, // Added initialProjectId
   ]);
 
   const showDeleteConfirm = () => {
@@ -774,6 +802,32 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                   </span>
                 );
               }}
+            />
+          </div>
+          <div className="mt-3">
+            <h3 className="text-sm font-medium text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>Project</h3>
+            <Select
+              allowClear
+              style={{ width: "100%" }}
+              placeholder="Assign to a project (optional)"
+              value={selectedProjectId === undefined ? null : selectedProjectId} // Handle undefined for Select value
+              onChange={(value) => setSelectedProjectId(value)}
+              loading={isLoadingProjects}
+              options={availableProjects.map((proj) => ({
+                label: (
+                  <div className="flex items-center">
+                    {proj.color_hex && (
+                      <span 
+                        className="w-3 h-3 rounded-full mr-2 inline-block" 
+                        style={{ backgroundColor: proj.color_hex, border: '1px solid rgba(0,0,0,0.1)' }}
+                      ></span>
+                    )}
+                    {proj.name}
+                  </div>
+                ),
+                value: proj.id as string,
+              }))}
+              optionFilterProp="label" // Assuming you want to filter by project name in the label
             />
           </div>
           <div className="mt-3">
