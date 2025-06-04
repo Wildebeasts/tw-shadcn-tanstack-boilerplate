@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { JournalEntry, Tag } from '@/types/supabase'; // Import the JournalEntry type
+import { JournalEntry, Tag, Project } from '@/types/supabase'; // Import the JournalEntry type
 import { cn } from "@/utils/css"; // For conditional class names
 import { getTagsForEntry } from '@/services/tagService'; // Added
+import { getProjectById } from '@/services/projectService'; // Added for project name
 import { SupabaseClient } from '@supabase/supabase-js'; // Added
 import { moodOptions } from './MoodSelector'; // Import moodOptions
+import { Building } from 'lucide-react'; // Added for project icon
 
 // Define a simple type for Tiptap/ProseMirror node structure for text extraction
 interface Node {
@@ -23,6 +25,9 @@ interface DiaryCardProps {
 const DiaryCard: React.FC<DiaryCardProps> = ({ diary, onSelectDiary, isSelected, supabase, updated_at }) => {
   const [entryTags, setEntryTags] = useState<Tag[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const [isLoadingProjectName, setIsLoadingProjectName] = useState(false);
+  const [projectFetchError, setProjectFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -41,6 +46,43 @@ const DiaryCard: React.FC<DiaryCardProps> = ({ diary, onSelectDiary, isSelected,
 
     fetchTags();
   }, [diary.id, supabase, updated_at]);
+
+  useEffect(() => {
+    const fetchProjectName = async () => {
+      if (!diary.project_id || !supabase) {
+        setProjectName(null);
+        setProjectFetchError(null);
+        return;
+      }
+      setIsLoadingProjectName(true);
+      setProjectFetchError(null);
+      try {
+        // Assuming project_id in JournalEntry is a string UUID referring to Projects table
+        const projectData: Project | null = await getProjectById(supabase, diary.project_id as string);
+        if (projectData) {
+          setProjectName(projectData.name);
+        } else {
+          setProjectName(null);
+          // Optional: set a specific error if project_id exists but project not found
+          // setProjectFetchError('Project details not found.'); 
+        }
+      } catch (error) {
+        console.error(`Error fetching project name for diary ${diary.id}, project ID ${diary.project_id}:`, error);
+        setProjectName(null);
+        setProjectFetchError('Could not load project name.');
+      } finally {
+        setIsLoadingProjectName(false);
+      }
+    };
+
+    if (diary.project_id) { // Only run if project_id is present
+      fetchProjectName();
+    } else {
+      setProjectName(null);
+      setIsLoadingProjectName(false);
+      setProjectFetchError(null);
+    }
+  }, [diary.project_id, diary.id, supabase]);
 
   // Helper to format the date, can be made more sophisticated
   const formatDate = (isoString: string) => {
@@ -133,6 +175,33 @@ const DiaryCard: React.FC<DiaryCardProps> = ({ diary, onSelectDiary, isSelected,
           />
         )}
       </div>
+      {/* Display Project Name */}
+      {isLoadingProjectName && (
+        <p 
+          className="text-xs text-slate-400 dark:text-slate-500 animate-pulse mb-1.5" 
+          style={{ fontFamily: 'Readex Pro, sans-serif' }}>
+          Loading project...
+        </p>
+      )}
+      {!isLoadingProjectName && projectName && (
+        <div 
+          className="flex items-center text-xs text-sky-600 dark:text-sky-500 mb-1.5" 
+          style={{ fontFamily: 'Readex Pro, sans-serif' }}
+          title={`Project: ${projectName}"`}
+        >
+          <Building size={12} className="mr-1 flex-shrink-0" />
+          <span className="truncate">{projectName}</span>
+        </div>
+      )}
+      {!isLoadingProjectName && projectFetchError && diary.project_id && ( // Show error only if relevant
+        <p 
+          className="text-xs text-red-500 dark:text-red-400 mb-1.5" 
+          style={{ fontFamily: 'Readex Pro, sans-serif' }}
+        >
+          {projectFetchError}
+        </p>
+      )}
+
       {/* Content Snippet - Figma style_SQAN8F (Readex Pro, 10px, #989CB8) */}
       <p 
         className="text-xs text-slate-500 mb-1.5 line-clamp-2"

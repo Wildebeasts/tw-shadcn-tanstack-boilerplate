@@ -12,6 +12,16 @@ export const getJournalEntriesByUserId = async (supabase: SupabaseClient, userId
   return data as JournalEntry[];
 };
 
+export const getJournalEntriesByProjectId = async (supabase: SupabaseClient, projectId: string) => {
+  const { data } = await supabase
+    .from('journal_entries')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('entry_timestamp', { ascending: false })
+    .throwOnError();
+  return data as JournalEntry[];
+};
+
 export const getJournalEntryById = async (supabase: SupabaseClient, entryId: string) => {
   const { data } = await supabase
     .from('journal_entries')

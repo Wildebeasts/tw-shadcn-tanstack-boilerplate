@@ -4,11 +4,12 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DiaryCard from '@/components/diary/DiaryCard';
 // import DiaryCreateForm from '@/components/diary/DiaryCreateForm'; // Commented out as DiaryDetailView will be editor
 import DiaryDetailView from '@/components/diary/DiaryDetailView';
-import { JournalEntry, Tag } from '@/types/supabase';
+import { JournalEntry, Tag, Project } from '@/types/supabase';
 import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // Added Supabase client creator
 import { useAuth } from "@clerk/clerk-react"; // Added Clerk useAuth
 import { createJournalEntry, getJournalEntriesByUserId, updateJournalEntry, deleteJournalEntry } from '@/services/journalEntryService'; // Added journal entry services and updateJournalEntry
 import { getTagsByUserId, getEntryTagsByEntryId } from '@/services/tagService'; // Added tag service and getEntryTagsByEntryId
+import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Import project service
 // import Calendar from 'react-calendar'; // REMOVED react-calendar import
 // import 'react-calendar/dist/Calendar.css'; // REMOVED react-calendar CSS
 // import { useRouter, useSearchParams } from 'next/navigation'; // REMOVE Next.js router hooks
@@ -98,6 +99,10 @@ const DiaryPage = () => {
   const [isLoadingUserTags, setIsLoadingUserTags] = useState(true);
   const [activeFilterTagIds, setActiveFilterTagIds] = useState<string[]>([]);
 
+  const [allUserProjects, setAllUserProjects] = useState<Project[]>([]); // ADDED: State for user projects
+  const [isLoadingUserProjects, setIsLoadingUserProjects] = useState(true); // ADDED: State for loading projects
+  const [activeFilterProjectId, setActiveFilterProjectId] = useState<string | null>(null); // ADDED: State for active project filter
+
   // const router = useRouter(); // REMOVE Next.js useRouter
   // const searchParams = useSearchParams(); // REMOVE Next.js useSearchParams
   const navigate = useNavigate(); // Initialize TanStack useNavigate
@@ -119,6 +124,7 @@ const DiaryPage = () => {
         content: "", // Start with empty content
         manual_mood_label: "neutral", // Default mood for new draft
         is_draft: true, // Mark as draft
+        project_id: activeFilterProjectId || undefined, // ADDED: Associate with active project if one is selected
       };
       const newDiaryEntry = await createJournalEntry(supabase, newEntryBasics as Partial<JournalEntry>);
       if (newDiaryEntry && newDiaryEntry.id) {
@@ -131,7 +137,7 @@ const DiaryPage = () => {
       console.error("Error creating new diary:", err);
       setError("An error occurred while creating the new diary.");
     }
-  }, [userId, supabase]);
+  }, [userId, supabase, activeFilterProjectId]);
 
   // Effect to handle 'createNew' search parameter
   useEffect(() => {
@@ -139,7 +145,7 @@ const DiaryPage = () => {
       if (!createNewHandledRef.current) { // Check if already handled
         if (userId && supabase) {
           createNewHandledRef.current = true; // Mark as handled
-          handleCreateNew();
+          handleCreateNew(); // MODIFIED: Call without arguments, it will use activeFilterProjectId from state
           navigate({
             to: routerLocation.pathname, // Use current pathname
             search: (prev: DiaryPageSearch) => {
@@ -168,7 +174,7 @@ const DiaryPage = () => {
       // If createNew is not true in the search params, reset the flag
       createNewHandledRef.current = false;
     }
-  }, [search.createNew, userId, supabase, handleCreateNew, navigate, routerLocation.pathname]);
+  }, [search.createNew, userId, supabase, handleCreateNew, navigate, routerLocation.pathname]); // MODIFIED: No longer pass activeFilterProjectId to handleCreateNew
 
   // Fetch initial diaries and user tags
   useEffect(() => {
@@ -224,6 +230,19 @@ const DiaryPage = () => {
           console.error("Error fetching user tags:", err);
           // Optionally set an error state for tags
           setIsLoadingUserTags(false);
+        });
+
+      // Fetch user projects
+      setIsLoadingUserProjects(true);
+      getProjectsByUserId(supabase, userId)
+        .then(projects => {
+          setAllUserProjects(projects || []);
+          setIsLoadingUserProjects(false);
+        })
+        .catch(err => {
+          console.error("Error fetching user projects:", err);
+          // Optionally set an error state for projects
+          setIsLoadingUserProjects(false);
         });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,6 +315,10 @@ const DiaryPage = () => {
     );
   };
 
+  const handleProjectFilterClick = (projectId: string | null) => { // ADDED: Handler for project filter click
+    setActiveFilterProjectId(prev => (prev === projectId ? null : projectId)); // Toggle or set, null to clear
+  };
+
   // Calendar related logic from TodoPage
   const calendarDateForLogic = selectedDate || new Date(); // Use selectedDate if available, else today for month display
   const currentMonthName = calendarDateForLogic.toLocaleString('default', { month: 'long' });
@@ -348,6 +371,11 @@ const DiaryPage = () => {
       });
     }
 
+    // Filter by selected project
+    if (activeFilterProjectId) { // ADDED: Project ID filter
+      tempDiaries = tempDiaries.filter(diary => diary.project_id === activeFilterProjectId);
+    }
+
     // Filter by selected date
     if (selectedDate && !(selectedDate instanceof Array)) { // Ensure selectedDate is a single date
         const filterDate = new Date(selectedDate);
@@ -361,7 +389,7 @@ const DiaryPage = () => {
     }
 
     return tempDiaries;
-  }, [diaries, searchQuery, activeFilterTagIds, selectedDate]);
+  }, [diaries, searchQuery, activeFilterTagIds, selectedDate, activeFilterProjectId]);
 
   const selectedDiary = filteredDiaries.find(diary => diary.id === selectedDiaryId);
   // If selected diary is filtered out, try to find it in the original diaries list
@@ -422,6 +450,40 @@ const DiaryPage = () => {
               </div>
             ) : (
               <p className="text-xs text-slate-400" style={{ fontFamily: 'Readex Pro, sans-serif' }}>No tags created yet.</p>
+            )}
+          </div>
+
+          {/* Project Filters Section */}
+          <div className="mt-4">
+            <h2 className="text-sm font-medium text-slate-500 mb-2" style={{ fontFamily: 'Readex Pro, sans-serif' }}>Filter by Project:</h2>
+            {isLoadingUserProjects ? (
+              <p className="text-xs text-slate-400">Loading projects...</p>
+            ) : allUserProjects.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allUserProjects.map(project => (
+                  <button
+                    key={project.id}
+                    onClick={() => handleProjectFilterClick(project.id!)}
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors duration-150 ease-in-out shadow-sm`}
+                    style={
+                      activeFilterProjectId === project.id!
+                        ? { backgroundColor: project.color_hex || '#007AFF', color: getContrastColor(project.color_hex || '#007AFF'), borderColor: project.color_hex || '#007AFF' }
+                        : { backgroundColor: '#F3F4F6', color: '#374151', borderColor: '#D1D5DB', fontFamily: 'Readex Pro, sans-serif' }
+                    }
+                  >
+                    {project.name}
+                  </button>
+                ))}
+                <button
+                  onClick={() => handleProjectFilterClick(null)} // Clear project filter
+                  className={`px-2.5 py-1 text-xs rounded-md border transition-colors duration-150 ease-in-out shadow-sm ${!activeFilterProjectId ? 'bg-slate-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+                  style={{ fontFamily: 'Readex Pro, sans-serif' }}
+                >
+                  All Projects
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400" style={{ fontFamily: 'Readex Pro, sans-serif' }}>No projects created yet.</p>
             )}
           </div>
 
@@ -514,9 +576,11 @@ const DiaryPage = () => {
           <p className="text-slate-500 text-center py-10">No diaries match your selected tags.</p>
         ) : selectedDate && filteredDiaries.length === 0 ? ( 
             <p className="text-slate-500 text-center py-10">No diaries found for {selectedDate.toLocaleDateString()}.</p>
+        ) : activeFilterProjectId && filteredDiaries.length === 0 ? ( // ADDED: Message for no diaries matching project filter
+            <p className="text-slate-500 text-center py-10">No diaries found for the selected project.</p>
         ) : diaries.length === 0 ? (
           <p className="text-slate-500 text-center py-10">No diaries yet. Click "Create New Diary" to start!</p>
-        ) : filteredDiaries.length === 0 && (searchQuery || activeFilterTagIds.length > 0 || selectedDate) ? (
+        ) : filteredDiaries.length === 0 && (searchQuery || activeFilterTagIds.length > 0 || selectedDate || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
             <p className="text-slate-500 text-center py-10">No diaries match your current filters.</p>
         ) : (
           <div className="space-y-3">
@@ -563,7 +627,7 @@ const DiaryPage = () => {
               Create Your First Diary
             </button>
           </div>
-        ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0) ? (
+        ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0 || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
           <div className="text-center py-10 flex flex-col items-center justify-center h-full">
             <h2 className="text-2xl font-semibold text-slate-600">
               No Matching Diaries
