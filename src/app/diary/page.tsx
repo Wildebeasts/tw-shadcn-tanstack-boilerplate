@@ -49,6 +49,33 @@ interface JournalEntryWithTags extends JournalEntry {
 
 const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; // Added for new calendar
 
+// Helper function to sort diaries by entry_timestamp robustly
+// Sorts in descending order (newest first)
+// Null or invalid timestamps are sorted towards the end
+const sortDiariesByEntryTimestamp = (a: JournalEntryWithTags, b: JournalEntryWithTags) => {
+  const tsA = a.entry_timestamp;
+  const tsB = b.entry_timestamp;
+
+  // Handle cases where timestamps might be null
+  if (tsA === null && tsB === null) return 0;
+  if (tsA === null) return 1; // null timestamps sort after valid ones (i.e., appear "later" or at the end for descending)
+  if (tsB === null) return -1; // null timestamps sort after valid ones
+
+  const dateA = new Date(tsA).getTime();
+  const dateB = new Date(tsB).getTime();
+
+  // Handle NaN (invalid date string after conversion)
+  const aIsNaN = isNaN(dateA);
+  const bIsNaN = isNaN(dateB);
+
+  if (aIsNaN && bIsNaN) return 0;
+  // Sort NaNs after valid dates (and after nulls, due to previous checks)
+  if (aIsNaN) return 1; 
+  if (bIsNaN) return -1;
+
+  return dateB - dateA; // Descending order (newest first)
+};
+
 const DiaryPage = () => {
   const { getToken, userId } = useAuth();
   const supabase = useMemo(() => {
@@ -95,7 +122,7 @@ const DiaryPage = () => {
       };
       const newDiaryEntry = await createJournalEntry(supabase, newEntryBasics as Partial<JournalEntry>);
       if (newDiaryEntry && newDiaryEntry.id) {
-        setDiaries(prevDiaries => [{ ...newDiaryEntry, tag_ids: [] }, ...prevDiaries].sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime()));
+        setDiaries(prevDiaries => [{ ...newDiaryEntry, tag_ids: [] }, ...prevDiaries].sort(sortDiariesByEntryTimestamp));
         setSelectedDiaryId(newDiaryEntry.id); // Select the new diary
       } else {
         setError("Failed to create new diary entry in the database.");
@@ -171,7 +198,7 @@ const DiaryPage = () => {
 
           const diariesWithTags = await Promise.all(diariesWithTagsPromises);
 
-          const sortedDiaries = diariesWithTags.sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime());
+          const sortedDiaries = diariesWithTags.sort(sortDiariesByEntryTimestamp);
           setDiaries(sortedDiaries);
 
           if (sortedDiaries.length > 0 && !selectedDiaryId) {
@@ -216,7 +243,7 @@ const DiaryPage = () => {
       if (updatedEntry) {
         setDiaries(prevDiaries => 
           prevDiaries.map(d => d.id === selectedDiaryId ? { ...d, ...updatedEntry } : d)
-                     .sort((a, b) => new Date(b.entry_timestamp).getTime() - new Date(a.entry_timestamp).getTime())
+                     .sort(sortDiariesByEntryTimestamp)
         );
         // Optionally, you could re-fetch or just update local state
       } else {

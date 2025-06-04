@@ -109,11 +109,86 @@ const parseBlockNoteJsonContent = (
   }
 };
 
-// Helper for Streak Card day abbreviations
-const getDayAbbreviationForStreak = (date: Date): string => {
+// Helper for local day abbreviations
+const getLocalDayAbbreviation = (date: Date): string => {
   const days = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
   return days[date.getDay()];
 };
+
+// Helper for Streak Card day abbreviations, respecting a target timezone
+const getDayAbbreviationForStreakInTimezone = (date: Date, timeZone: string): string => {
+  const parts = getDatePartsInTimezone(date, timeZone);
+  const dateAtMidnightInTargetZoneAsUTC = new Date(Date.UTC(parts.year, parts.monthIndex, parts.day));
+  const dayOfWeek = dateAtMidnightInTargetZoneAsUTC.getUTCDay();
+  const dayAbbreviations = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+  return dayAbbreviations[dayOfWeek];
+};
+
+// Helper function to sort journal entries by entry_timestamp robustly
+// Sorts in descending order (newest first)
+// Null or invalid timestamps are sorted towards the end
+const sortJournalEntriesByTimestamp = (a: JournalEntry, b: JournalEntry) => {
+  const tsA = a.entry_timestamp;
+  const tsB = b.entry_timestamp;
+
+  // Handle cases where timestamps might be null or undefined
+  if ((tsA === null || tsA === undefined) && (tsB === null || tsB === undefined)) return 0;
+  if (tsA === null || tsA === undefined) return 1; // null/undefined timestamps sort after valid ones
+  if (tsB === null || tsB === undefined) return -1; // null/undefined timestamps sort after valid ones
+
+  const dateA = new Date(tsA).getTime();
+  const dateB = new Date(tsB).getTime();
+
+  // Handle NaN (invalid date string after conversion)
+  const aIsNaN = isNaN(dateA);
+  const bIsNaN = isNaN(dateB);
+
+  if (aIsNaN && bIsNaN) return 0;
+  // Sort NaNs after valid dates
+  if (aIsNaN) return 1;
+  if (bIsNaN) return -1;
+
+  return dateB - dateA; // Descending order (newest first)
+};
+
+// --- START TIMEZONE HELPER ---
+const TARGET_TIMEZONE = 'Asia/Bangkok';
+
+// Utility to get date parts in a specific timezone
+const getDatePartsInTimezone = (
+  date: Date,
+  timeZone: string
+): { year: number; monthIndex: number; day: number; monthShortName: string; dateString: string } => {
+  // For year, month, day numeric parts using 'en-CA' for YYYY-MM-DD format
+  const ymdFormatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' often yields YYYY-MM-DD
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const formattedDateStr = ymdFormatter.format(date); // Expected: YYYY-MM-DD
+
+  const partsArray = formattedDateStr.split('-');
+  const year = parseInt(partsArray[0], 10);
+  const monthIndex = parseInt(partsArray[1], 10) - 1; // 0-indexed for JS
+  const day = parseInt(partsArray[2], 10);
+
+  // For short month name
+  const monthNamer = new Intl.DateTimeFormat('en-US', { // Using 'en-US' for standard short month names
+    timeZone,
+    month: 'short',
+  });
+  const monthShortName = monthNamer.format(date);
+
+  return {
+    year,
+    monthIndex,
+    day,
+    monthShortName,
+    dateString: formattedDateStr, // YYYY-MM-DD
+  };
+};
+// --- END TIMEZONE HELPER ---
 
 const UserProfilePage = () => {
   const { user } = useClerk();
@@ -153,11 +228,7 @@ const UserProfilePage = () => {
         .then(async (data: JournalEntry[] | null) => {
           if (data && data.length > 0) {
             setUserJournalEntries(data);
-            const sortedEntries = [...data].sort(
-              (a, b) =>
-                new Date(b.entry_timestamp).getTime() -
-                new Date(a.entry_timestamp).getTime()
-            );
+            const sortedEntries = [...data].sort(sortJournalEntriesByTimestamp);
             const diaryEntry = sortedEntries[0];
             setLatestDiary(diaryEntry);
             const parsedContent = parseBlockNoteJsonContent(diaryEntry.content);
@@ -240,7 +311,7 @@ const UserProfilePage = () => {
 
       summary.push({
         date: targetDate,
-        dayAbbreviation: getDayAbbreviationForStreak(targetDate),
+        dayAbbreviation: getLocalDayAbbreviation(targetDate),
         dayOfMonth: targetDate.getDate().toString(),
         moodCountsToday,
         moodSegments: segments,
@@ -560,7 +631,7 @@ const UserProfilePage = () => {
                                   )}
                                 </div>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {getDayAbbreviationForStreak(date)}
+                                  {getDayAbbreviationForStreakInTimezone(date, TARGET_TIMEZONE)}
                                 </span>
                               </div>
                             );
