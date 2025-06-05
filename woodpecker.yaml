@@ -1,8 +1,11 @@
 steps:
-  - name: frontend
+  - name: install nodejs
     image: bash
     commands:
       - curl -fsSL https://raw.githubusercontent.com/mklement0/n-install/stable/bin/n-install | bash -s -- -y 24
+  - name: frontend
+    image: bash
+    commands:
       - node -v
       - corepack enable pnpm
       - pnpm install
