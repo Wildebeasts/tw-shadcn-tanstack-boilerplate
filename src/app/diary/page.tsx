@@ -6,7 +6,7 @@ import DiaryCard from '@/components/diary/DiaryCard';
 import DiaryDetailView from '@/components/diary/DiaryDetailView';
 import { JournalEntry, Tag, Project } from '@/types/supabase';
 import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // Added Supabase client creator
-import { useAuth } from "@clerk/clerk-react"; // Added Clerk useAuth
+import { useAuth, useUser } from "@clerk/clerk-react"; // MODIFIED: Added useUser from Clerk
 import { createJournalEntry, getJournalEntriesByUserId, updateJournalEntry, deleteJournalEntry } from '@/services/journalEntryService'; // Added journal entry services and updateJournalEntry
 import { getTagsByUserId, getEntryTagsByEntryId } from '@/services/tagService'; // Added tag service and getEntryTagsByEntryId
 import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Import project service
@@ -15,6 +15,10 @@ import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Impor
 // import { useRouter, useSearchParams } from 'next/navigation'; // REMOVE Next.js router hooks
 import { useNavigate, useSearch, useRouterState } from '@tanstack/react-router'; // Import TanStack Router hooks
 import { ChevronLeft, ChevronRight } from 'lucide-react'; // Added Chevron icons
+
+// ADDED: Imports for Realtime components
+import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'; 
+import { RealtimeCursors } from '@/components/realtime-cursors';
 
 // Define a type for your search params. 
 // This should align with your TanStack Router configuration for this route.
@@ -79,6 +83,7 @@ const sortDiariesByEntryTimestamp = (a: JournalEntryWithTags, b: JournalEntryWit
 
 const DiaryPage = () => {
   const { getToken, userId } = useAuth();
+  const { user } = useUser(); // ADDED: useUser hook to get user details
   const supabase = useMemo(() => {
     // Only create a new client if getToken is available
     // For server components or environments where getToken might not be immediately ready,
@@ -110,6 +115,9 @@ const DiaryPage = () => {
   const search: DiaryPageSearch = useSearch({ from: '/journal/diary' }); // Provide from, cast to any if type is complex
 
   const createNewHandledRef = useRef(false); // Ref to track if createNew has been handled
+
+  // Determine username: try fullName, then first email, then userId as fallback
+  const usernameForCursors = user?.fullName || user?.primaryEmailAddress?.emailAddress || userId || "Anonymous User";
 
   const handleCreateNew = useCallback(async () => {
     if (!userId || !supabase) {
@@ -405,6 +413,11 @@ const DiaryPage = () => {
         <header className="mb-6">
           <h1 className="text-xl font-normal text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>My diaries</h1>
           
+          {/* ADDED: RealtimeAvatarStack */}
+          <div className="my-3">
+            <RealtimeAvatarStack roomName="diary_collaboration_room" />
+          </div>
+
           <button 
             onClick={handleCreateNew}
             disabled={isLoadingDiaries} // Disable button while loading/creating
@@ -601,64 +614,67 @@ const DiaryPage = () => {
       </aside>
 
       <main className="flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-[#E4EFE7]/50 rounded-tl-2xl md:rounded-tl-none">
-        {/* Use currentSelectedDiary for the detail view to ensure it shows even if filtered out from the list */}
-        {currentSelectedDiary ? (
-          <DiaryDetailView 
-            key={currentSelectedDiary.id}
-            diary={currentSelectedDiary} 
-            onUpdateDiary={handleUpdateDiary}
-            onDeleteDiary={handleDeleteDiary} 
-            userId={userId}
-            supabase={supabase}
-          />
-        ) : isLoadingDiaries ? (
-          <div className="text-center py-10 flex flex-col items-center justify-center h-full">
-            <h2 className="text-2xl font-semibold text-slate-600">Loading...</h2>
-          </div>
-        ) : diaries.length === 0 ? (
-          <div className="text-center py-10 flex flex-col items-center justify-center h-full">
-            <h2 className="text-2xl font-semibold text-slate-600">
-              Create your first diary!
-            </h2>
-            <button 
-              onClick={handleCreateNew}
-              className="mt-4 px-6 py-3 text-lg font-medium text-white bg-primary hover:bg-primary/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-focus transition-colors"
-            >
-              Create Your First Diary
-            </button>
-          </div>
-        ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0 || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
-          <div className="text-center py-10 flex flex-col items-center justify-center h-full">
-            <h2 className="text-2xl font-semibold text-slate-600">
-              No Matching Diaries
-            </h2>
-            <p className="text-slate-500 mt-2">
-              No diaries match your current filters. Try adjusting your search, tags, or selected date.
-            </p>
-          </div>
-        ) : !currentSelectedDiary && filteredDiaries.length > 0 ? (
-          <div className="text-center py-10 flex flex-col items-center justify-center h-full">
-            <h2 className="text-2xl font-semibold text-slate-600">
-              Select a diary to view
-            </h2>
-            <p className="text-slate-500 mt-2">
-              Choose a diary from the list on the left.
-            </p>
-          </div>
-        ) : (
-          // Fallback: This case should ideally not be reached if logic above is comprehensive
-          // Or it's the case where currentSelectedDiary is null and no filters are active leading to empty list
-          // but diaries list is not empty - meaning something is wrong or user deselected actively.
-          // For now, a generic message or null if currentSelectedDiary is what drives the view.
-          // Given currentSelectedDiary is used for DiaryDetailView, if it's null, it will show this block or one of the above.
-          // If currentSelectedDiary is null and there are no diaries at all, the 'Create your first diary!' block handles it.
-          // If currentSelectedDiary is null, but there are diaries and no filters leading to empty, it means user needs to select one.
-           <div className="text-center py-10 flex flex-col items-center justify-center h-full">
-            <h2 className="text-2xl font-semibold text-slate-600">
-                Select a diary to view or create a new one.
-            </h2>
-          </div>
-        )}
+        {/* ADDED: RealtimeCursors wrapper */}
+        <RealtimeCursors roomName="diary_collaboration_room" username={usernameForCursors}>
+          {/* Use currentSelectedDiary for the detail view to ensure it shows even if filtered out from the list */}
+          {currentSelectedDiary ? (
+            <DiaryDetailView 
+              key={currentSelectedDiary.id}
+              diary={currentSelectedDiary} 
+              onUpdateDiary={handleUpdateDiary}
+              onDeleteDiary={handleDeleteDiary} 
+              userId={userId}
+              supabase={supabase}
+            />
+          ) : isLoadingDiaries ? (
+            <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+              <h2 className="text-2xl font-semibold text-slate-600">Loading...</h2>
+            </div>
+          ) : diaries.length === 0 ? (
+            <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+              <h2 className="text-2xl font-semibold text-slate-600">
+                Create your first diary!
+              </h2>
+              <button 
+                onClick={handleCreateNew}
+                className="mt-4 px-6 py-3 text-lg font-medium text-white bg-primary hover:bg-primary/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-focus transition-colors"
+              >
+                Create Your First Diary
+              </button>
+            </div>
+          ) : filteredDiaries.length === 0 && (selectedDate || searchQuery || activeFilterTagIds.length > 0 || activeFilterProjectId) ? ( // MODIFIED: Added activeFilterProjectId to condition
+            <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+              <h2 className="text-2xl font-semibold text-slate-600">
+                No Matching Diaries
+              </h2>
+              <p className="text-slate-500 mt-2">
+                No diaries match your current filters. Try adjusting your search, tags, or selected date.
+              </p>
+            </div>
+          ) : !currentSelectedDiary && filteredDiaries.length > 0 ? (
+            <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+              <h2 className="text-2xl font-semibold text-slate-600">
+                Select a diary to view
+              </h2>
+              <p className="text-slate-500 mt-2">
+                Choose a diary from the list on the left.
+              </p>
+            </div>
+          ) : (
+            // Fallback: This case should ideally not be reached if logic above is comprehensive
+            // Or it's the case where currentSelectedDiary is null and no filters are active leading to empty list
+            // but diaries list is not empty - meaning something is wrong or user deselected actively.
+            // For now, a generic message or null if currentSelectedDiary is what drives the view.
+            // Given currentSelectedDiary is used for DiaryDetailView, if it's null, it will show this block or one of the above.
+            // If currentSelectedDiary is null and there are no diaries at all, the 'Create your first diary!' block handles it.
+            // If currentSelectedDiary is null, but there are diaries and no filters leading to empty, it means user needs to select one.
+             <div className="text-center py-10 flex flex-col items-center justify-center h-full">
+              <h2 className="text-2xl font-semibold text-slate-600">
+                  Select a diary to view or create a new one.
+              </h2>
+            </div>
+          )}
+        </RealtimeCursors>
       </main>
     </div>
   );
