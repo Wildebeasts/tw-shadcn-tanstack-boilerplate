@@ -1,5 +1,5 @@
 steps:
-  - name: install nodejs
+  - name: Building FE
     image: bash
     commands:
       - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -16,3 +16,18 @@ steps:
       - pnpm add uuid
       - pnpm build
       - ls
+    - name: Deploy FE
+    image: bash
+    commands:
+      - lxc file push -r ./dist web-fe/root/Bean-Journal-Web-FE
+      - lxc exec web-fe -- /bin/bash -c '
+
+          npm install -g pm2
+          cd /root/Bean-Journal-Web-FE
+          pm2 delete BJ_FE || true
+          pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000
+          echo "PM2 service started in LXC container."
+        '
+    when:
+      event: push # Or your desired trigger
+      branch: main
