@@ -313,7 +313,11 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
 
     const currentDocString = JSON.stringify(editor.document);
     if (contentStrToStore !== currentDocString) {
-      editor.replaceBlocks(editor.document, blocksToLoad);
+      queueMicrotask(() => {
+        if (editor.document) { // ensure editor document is still valid
+          editor.replaceBlocks(editor.document, blocksToLoad);
+        }
+      });
     }
 
     setInitialDiaryContentString(contentStrToStore);
@@ -613,7 +617,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           is_draft: false,
           updated_at: new Date().toISOString(),
           manual_mood_label: moodToSave === null ? undefined : moodToSave,
-          project_id: projectToSaveId === null ? undefined : projectToSaveId, // Add project_id to updates
+          project_id: projectToSaveId == null ? null : projectToSaveId, // Ensures null is sent if project is unselected
         };
         await onUpdateDiary(coreUpdates);
 

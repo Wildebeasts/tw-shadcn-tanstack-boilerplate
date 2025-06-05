@@ -230,15 +230,6 @@ const DiaryCard: React.FC<DiaryCardProps> = ({ diary, onSelectDiary, isSelected,
       )}
 
       <div className="flex justify-between items-center">
-        {/* Category is not directly on JournalEntry, would be via EntryTag. For now, removing it. */}
-        {/* {diary.category && (
-          <span 
-            className="text-xs px-1.5 py-0.5 rounded-full bg-[#E9F0E6] text-[#667760]"
-            style={{ fontFamily: 'Readex Pro, sans-serif' }}
-          >
-            {diary.category}
-          </span>
-        )} */}
         <span 
             className="text-xs text-slate-400 ml-auto" // Added ml-auto to push date to the right if category is absent
             style={{ fontFamily: 'Readex Pro, sans-serif' }}

@@ -135,7 +135,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
   };
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6 bg-gray-50 dark:bg-gray-900 h-[calc(100vh-100px)]">
+    <div className="container mx-auto p-4 md:p-6 flex flex-col gap-6 bg-gray-50 dark:bg-gray-900 h-[calc(100vh-100px)]">
       <div className="overflow-hidden shadow-lg bg-white dark:bg-gray-800 rounded-lg"> 
         <div style={{ backgroundColor: project.color_hex || '#7DD3FC' }} className="h-10 w-full"></div>
         <div className="p-4 md:p-6"> 
@@ -155,7 +155,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
         </div>
       </div>
 
-      <section>
+      <section className="flex-grow min-h-0 overflow-y-auto">
         <h2 className="text-2xl font-semibold mb-4 text-gray-700 dark:text-gray-200">Associated Diaries</h2>
         {isLoadingEntries && !journalEntries.length ? (
           <div className="text-center py-6 text-gray-500 dark:text-gray-400">Loading diaries...</div>

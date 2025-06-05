@@ -33,7 +33,7 @@ export interface JournalEntry {
   ocr_processed_text?: string; // TEXT
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
-  project_id?: string; // UUID NULL
+  project_id?: string | null; // UUID NULL
 }
 
 export interface MediaAttachment {
