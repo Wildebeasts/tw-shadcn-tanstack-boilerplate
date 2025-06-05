@@ -2,9 +2,9 @@ steps:
   - name: install nodejs
     image: bash
     commands:
-      - curl -fsSL https://raw.githubusercontent.com/mklement0/n-install/stable/bin/n-install | bash -s -- -y 24
-      - export N_PREFIX="$HOME/n"
-      - export PATH="$N_PREFIX/bin:$PATH"
+      - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+      - \. "$HOME/.nvm/nvm.sh"
+      - nvm install 24
   - name: frontend
     image: bash
     commands:
