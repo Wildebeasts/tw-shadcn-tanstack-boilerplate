@@ -22,7 +22,6 @@ steps:
       # Make Woodpecker secrets available as environment variables in this step
       SSHK:
         from_secret: SSH_KEY
-      SSH_PRIVATE_KEY: $$SSH_KEY 
       REMOTE_HOST: 192.168.2.245
       REMOTE_USER: root
       REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
@@ -31,6 +30,7 @@ steps:
       - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
       
       # Setup SSH
+      - echo "The secret is $SSHK"
       - mkdir -p ~/.ssh
       - echo $SSHK > ~/.ssh/id_rsa_deploy
       - cat ~/.ssh/id_rsa_deploy
