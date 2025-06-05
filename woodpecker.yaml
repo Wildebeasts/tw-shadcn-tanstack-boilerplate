@@ -26,7 +26,7 @@ steps:
       REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
       DEPLOY_COMMAND: "cd /root/Bean-Journal-Web-FE && npm install -g pm2 && pm2 delete BJ_FE || true && pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000" # Your actual deploy command
     commands:
-      - apt-get update -y && apt-get install -y openssh-client rsync
+      - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
       
       # Setup SSH
       - mkdir -p ~/.ssh
