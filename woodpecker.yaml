@@ -17,16 +17,23 @@ steps:
       - pnpm build
       - ls
   - name: Deploy FE
-    image: bash
+    image: bash # Using the official bash Docker image
+    environment:
+      # Make Woodpecker secrets available as environment variables in this step
+      SSH_PRIVATE_KEY: $$SSH_KEY 
+      REMOTE_HOST: 192.168.2.245
+      REMOTE_USER: root
+      REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
+      DEPLOY_COMMAND: "cd /root/Bean-Journal-Web-FE && npm install -g pm2 && pm2 delete BJ_FE || true && pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000" # Your actual deploy command
     commands:
-      - sudo apt-get update
-      - sudo apt-get install -y lxd-client
-      - lxc file push -r ./dist web-fe/root/Bean-Journal-Web-FE
-      - lxc exec web-fe -- /bin/bash -c '
+      - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
+      - mkdir -p ~/.ssh
+      - echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_deploy
+      - chmod 600 ~/.ssh/id_rsa_deploy
+      
 
-          npm install -g pm2
-          cd /root/Bean-Journal-Web-FE
-          pm2 delete BJ_FE || true
-          pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000
-          echo "PM2 service started in LXC container."
-        '
+      - scp -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no -r ./dist ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TARGET_PATH}
+      
+      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "${DEPLOY_COMMAND}"
+      
+      - rm -f ~/.ssh/id_rsa_deploy
