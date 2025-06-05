@@ -2,6 +2,7 @@ steps:
   - name: frontend
     image: bash
     commands:
+      - node -v
       - pnpm install
       - pnpm build
       - pm2 delete BJ_FE
