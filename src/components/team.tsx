@@ -3,7 +3,8 @@ import { motion } from 'framer-motion'
 import MinhAnh from '@/images/minh-anh.png'
 import DinhDuong from '@/images/dinh-duong.png'
 import AnhKiet from '@/images/anh-kiet.png'
-
+import VuongNhan from '@/images/vuong-nhan.png'
+import DucTri from '@/images/duc-tri.png'
 const members = [
     {
         name: 'Minh Anh',
@@ -24,15 +25,15 @@ const members = [
         link: '#',
     },
     {
-        name: 'Henry Lee',
-        role: 'UX Engeneer',
-        avatar: 'https://alt.tailus.io/images/team/member-four.webp',
+        name: 'Vuong Nhan',
+        role: 'UI/UX Designer',
+        avatar: VuongNhan,
         link: '#',
     },
     {
-        name: 'Ava Williams',
-        role: 'Interaction Designer',
-        avatar: 'https://alt.tailus.io/images/team/member-five.webp',
+        name: 'Duc Tri',
+        role: 'UI/UX Designer',
+        avatar: DucTri,
         link: '#',
     },
 ]
