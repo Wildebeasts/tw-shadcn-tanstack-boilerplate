@@ -1,52 +1,57 @@
 steps:
   - name: Building FE
-    image: bash
+    image: node:18-alpine
     commands:
-      - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-      - export NVM_DIR="$HOME/.nvm" # Or wherever nvm is installed
-      - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' # This loads nvm
-      - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' # This loads nvm bash_completion
-      - nvm install node # Installs the latest version of Node.js
-      - nvm use node
-      - node -v
-      - npm -v
+      # Install pnpm
       - corepack enable pnpm
+      
+      # Install dependencies
       - pnpm install
-      - pnpm add @mantine/core
-      - pnpm add uuid
+      
+      # Add missing dependencies (if not in package.json)
+      - pnpm add @mantine/core uuid
+      
+      # Build the project
       - pnpm build
-      - ls
-  - name: Deploy FE
-    image: bash
-    commands:
-      - apt-get update
-      - apt-get install -y lxd-client
-      - lxc file push -r ./dist web-fe/root/Bean-Journal-Web-FE
-      - lxc exec web-fe -- /bin/bash -c '
+      
+      # Verify build output
+      - ls -la
+      - ls -la dist/ || echo "No dist directory found"
 
-          npm install -g pm2
-          cd /root/Bean-Journal-Web-FE
-          pm2 delete BJ_FE || true
-          pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000
-          echo "PM2 service started in LXC container."
-        '
   - name: Deploy FE
-    image: bash # Using the official bash Docker image
+    image: alpine:latest
     environment:
-      # Make Woodpecker secrets available as environment variables in this step
-      SSH_PRIVATE_KEY: $$SSH_KEY 
+      SSH_PRIVATE_KEY:
+        from_secret: SSH_KEY
       REMOTE_HOST: 192.168.2.245
       REMOTE_USER: root
-      REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
-      DEPLOY_COMMAND: "cd /root/Bean-Journal-Web-FE && npm install -g pm2 && pm2 delete BJ_FE || true && pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000" # Your actual deploy command
+      REMOTE_TARGET_PATH: /root
     commands:
+      # Install required packages
+      - apk add --no-cache openssh-client rsync
+      
+      # Setup SSH
       - mkdir -p ~/.ssh
-      - echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_deploy
-      - chmod 600 ~/.ssh/id_rsa_deploy
+      - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+      - chmod 600 ~/.ssh/id_rsa
+      - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
       
-
-      - scp -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no -r ./dist ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TARGET_PATH}
+      # Verify dist directory exists
+      - ls -la dist/ || (echo "Build artifacts not found!" && exit 1)
       
-      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "${DEPLOY_COMMAND}"
+      # Create target directory and copy files
+      - ssh -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
+      - rsync -avz -e "ssh -i ~/.ssh/id_rsa" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
       
-      - rm -f ~/.ssh/id_rsa_deploy
+      # Deploy with PM2
+      - |
+        ssh -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "
+          cd $REMOTE_TARGET_PATH/Bean-Journal-Web-FE &&
+          npm install -g pm2 serve &&
+          pm2 delete BJ_FE || true &&
+          pm2 start serve --name BJ_FE -- -s ./dist/ -l 3000 &&
+          pm2 save
+        "
+      
+      # Cleanup
+      - rm -f ~/.ssh/id_rsa
