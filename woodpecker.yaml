@@ -19,6 +19,8 @@ steps:
   - name: Deploy FE
     image: bash
     commands:
+      - apt-get update
+      - apt-get install -y lxd-client
       - lxc file push -r ./dist web-fe/root/Bean-Journal-Web-FE
       - lxc exec web-fe -- /bin/bash -c '
 
