@@ -13,4 +13,6 @@ steps:
       - corepack enable pnpm
       - pnpm install
       - pnpm add @mantine/core
+      - pnpm add uuid
       - pnpm build
+      - ls
