@@ -20,6 +20,8 @@ steps:
     image: bash # Using the official bash Docker image
     environment:
       # Make Woodpecker secrets available as environment variables in this step
+      SSHK:
+        from_secret: SSH_KEY
       SSH_PRIVATE_KEY: $$SSH_KEY 
       REMOTE_HOST: 192.168.2.245
       REMOTE_USER: root
@@ -30,7 +32,7 @@ steps:
       
       # Setup SSH
       - mkdir -p ~/.ssh
-      - echo $${SSH_KEY} > ~/.ssh/id_rsa_deploy
+      - echo $SSHK > ~/.ssh/id_rsa_deploy
       - cat ~/.ssh/id_rsa_deploy
       - chmod 600 ~/.ssh/id_rsa_deploy
       - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
