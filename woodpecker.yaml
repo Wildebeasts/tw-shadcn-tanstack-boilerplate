@@ -12,6 +12,7 @@ steps:
       - npm -v
       - corepack enable pnpm
       - pnpm install
+      - pnpm add @mantine/core
       - pnpm build
       - pm2 delete BJ_FE
       - pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000
