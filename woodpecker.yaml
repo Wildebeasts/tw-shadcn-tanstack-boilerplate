@@ -1,5 +1,6 @@
 steps:
   - name: Building FE
+    image: bash
     commands:
       # Install Node.js using NodeSource repository (if not installed)
       - curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
@@ -22,6 +23,7 @@ steps:
       - ls -la dist/ || echo "No dist directory found"
 
   - name: Deploy FE
+    image: bash
     environment:
       SSH_PRIVATE_KEY:
         from_secret: SSH_KEY
