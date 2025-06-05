@@ -478,7 +478,7 @@ const UserProfilePage = () => {
   const currentStreak = profileData?.current_journal_streak || 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black text-[#2F2569] dark:text-gray-200">
+    <div className="min-h-screen bg-gradient-to-b from-[#E4EFE7] to-white dark:from-gray-800 dark:via-gray-900 dark:to-black text-[#2F2569] dark:text-gray-200">
       <div className="overflow-hidden">
         <div
           className={`relative h-48 md:h-64 ${!coverPhotoUrl ? "" : "bg-cover bg-center"}`}

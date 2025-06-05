@@ -21,6 +21,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'; // Added Chevron icons
 // This should align with your TanStack Router configuration for this route.
 interface DiaryPageSearch {
   createNew?: boolean;
+  entryId?: string; // ADDED: For linking directly to a diary
   // Add other expected search params here if any
 }
 
@@ -105,6 +106,7 @@ const DiaryPage = () => {
   const search: DiaryPageSearch = useSearch({ from: '/journal/diary' }); // Provide from, cast to any if type is complex
 
   const createNewHandledRef = useRef(false); // Ref to track if createNew has been handled
+  const entryIdFromUrlRef = useRef<string | null>(null); // Ref to track entryId from URL
 
   const handleCreateNew = useCallback(async () => {
     if (!userId || !supabase) {
@@ -171,6 +173,44 @@ const DiaryPage = () => {
     }
   }, [search.createNew, userId, supabase, handleCreateNew, navigate, routerLocation.pathname]); // MODIFIED: No longer pass activeFilterProjectId to handleCreateNew
 
+  // Effect to handle 'entryId' search parameter from URL
+  useEffect(() => {
+    if (search.entryId) {
+      // Store the entryId from URL if not already done or if it changed
+      if (entryIdFromUrlRef.current !== search.entryId) {
+        entryIdFromUrlRef.current = search.entryId;
+      }
+
+      // Attempt to process if diaries are loaded and entryId is pending
+      if (!isLoadingDiaries && diaries.length > 0 && entryIdFromUrlRef.current) {
+        const diaryToSelect = diaries.find(d => d.id === entryIdFromUrlRef.current);
+        if (diaryToSelect) {
+          setSelectedDiaryId(diaryToSelect.id!);
+        } else {
+          console.warn(`Diary with ID ${entryIdFromUrlRef.current} from URL not found.`);
+          // Fallback: If entryId from URL is invalid, the main diary loading effect's
+          // default selection logic will apply, or it will remain null if no diaries.
+        }
+        
+        // Clear the entryId from URL and the ref now that it's been processed
+        navigate({
+          to: routerLocation.pathname,
+          search: (prevSearch: DiaryPageSearch) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { entryId, ...rest } = prevSearch;
+            return rest;
+          },
+          replace: true,
+        });
+        entryIdFromUrlRef.current = null; // Reset ref after processing and navigation
+      }
+    } else {
+      // If there's no entryId in the search params, ensure our ref is also clear.
+      // This handles cases where the user navigates away from an entryId-specific URL.
+      entryIdFromUrlRef.current = null;
+    }
+  }, [search.entryId, diaries, isLoadingDiaries, navigate, routerLocation.pathname, setSelectedDiaryId]);
+
   // Fetch initial diaries and user tags
   useEffect(() => {
     if (userId && supabase) { // Check for supabase client availability
@@ -202,11 +242,24 @@ const DiaryPage = () => {
           const sortedDiaries = diariesWithTags.sort(sortDiariesByEntryTimestamp);
           setDiaries(sortedDiaries);
 
-          if (sortedDiaries.length > 0 && !selectedDiaryId) {
-            setSelectedDiaryId(sortedDiaries[0].id!);
+          // Default selection logic:
+          // Only set a default if no entryId from URL is currently being processed (indicated by entryIdFromUrlRef.current)
+          // and if no diary is already selected.
+          if (sortedDiaries.length > 0 && !entryIdFromUrlRef.current) {
+            setSelectedDiaryId(currentSelectedId => {
+              // If nothing is selected yet (currentSelectedId is null), select the first diary.
+              // Otherwise, keep the existing selection.
+              return currentSelectedId === null ? sortedDiaries[0].id! : currentSelectedId;
+            });
           } else if (sortedDiaries.length === 0) {
+            // If there are no diaries at all, ensure nothing is selected.
             setSelectedDiaryId(null);
           }
+          // If entryIdFromUrlRef.current has a value, it means the other effect is trying to select a diary based on URL.
+          // We let that effect complete. If it successfully selects a diary, currentSelectedId will be non-null here.
+          // If it fails (e.g., invalid entryId), selectedDiaryId will remain null, and if entryIdFromUrlRef.current is then cleared,
+          // this logic (potentially on a future re-run if deps change) would pick the default.
+
           setIsLoadingDiaries(false);
         })
         .catch(err => {
@@ -241,7 +294,7 @@ const DiaryPage = () => {
         });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, supabase]);
+  }, [userId, supabase]); // Note: selectedDiaryId removed from deps to avoid loop with entryId effect, entryIdFromUrlRef added for conditional default selection
 
   const handleSelectDiary = (id: string) => {
     setSelectedDiaryId(id);

@@ -12,8 +12,8 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  Paperclip,
-  Tag,
+  // Paperclip,
+  // Tag,
   ChevronDown,
   Check,
   X,
@@ -486,7 +486,7 @@ const TodoPage = () => {
                 ))}
               </div>
             </div>
-            <div className="bg-white/70 dark:bg-slate-800/70 p-4 rounded-xl shadow-lg">
+            {/* <div className="bg-white/70 dark:bg-slate-800/70 p-4 rounded-xl shadow-lg">
                 <h4 className={`text-lg font-semibold mb-3 ${primaryButtonText} dark:text-gray-200`}>Quick Actions</h4>
                 <Button variant="outline" className={`w-full justify-start mb-2 border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!supabase}>
                     <Paperclip size={16} className="mr-2"/> Attach File to Task
@@ -494,7 +494,7 @@ const TodoPage = () => {
                 <Button variant="outline" className={`w-full justify-start border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!supabase}>
                     <Tag size={16} className="mr-2"/> Manage Tags
                 </Button>
-            </div>
+            </div> */}
           </div>
         </div>
       </main>
