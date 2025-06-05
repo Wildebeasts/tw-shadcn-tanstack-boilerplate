@@ -8,8 +8,6 @@ import {
   Palette,
   ShoppingBag,
   UserCircle,
-  Settings,
-  Shield,
   PlusSquare,
   // FolderKanban, // Removed as it's used in NavProjects
   // Pencil, // Removed as it's used in NavProjects
@@ -308,7 +306,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       label="My Profile"
                       labelIcon={<UserCircle size={16} />}
                     />
-                    <UserButton.Link 
+                    {/* <UserButton.Link 
                       href="/user/account"
                       label="Account"
                       labelIcon={<Settings size={16} />}
@@ -317,7 +315,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       href="/user/security"
                       label="Security"
                       labelIcon={<Shield size={16} />}
-                    />
+                    /> */}
                   </UserButton.MenuItems>
                   <UserButton.UserProfilePage
                     label="Theme"

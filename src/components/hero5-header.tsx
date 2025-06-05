@@ -1,5 +1,5 @@
 import { Logo } from "./logo";
-import { BookOpen, Menu, Shield, UserCircle, X } from "lucide-react";
+import { BookOpen, Menu, UserCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import React from "react";
 import { cn } from "@/utils/css";
@@ -175,11 +175,11 @@ export const HeroHeader = () => {
                       label="Journal"
                       labelIcon={<BookOpen size={16} />}
                     />
-                    <UserButton.Link
+                    {/* <UserButton.Link
                       href="/user/security"
                       label="Security"
                       labelIcon={<Shield size={16} />}
-                    />
+                    /> */}
                   </UserButton.MenuItems>
                 </UserButton>
               ) : (
