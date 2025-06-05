@@ -5,8 +5,9 @@ import DiaryCard from '@/components/diary/DiaryCard';
 // import DiaryCreateForm from '@/components/diary/DiaryCreateForm'; // Commented out as DiaryDetailView will be editor
 import DiaryDetailView from '@/components/diary/DiaryDetailView';
 import { JournalEntry, Tag, Project } from '@/types/supabase';
-import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // Added Supabase client creator
-import { useAuth } from "@clerk/clerk-react"; // Added Clerk useAuth
+// import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // No longer needed
+import { useAuth } from "@clerk/clerk-react"; // Kept for userId, getToken might be removed if not used elsewhere
+import { useSupabase } from "@/contexts/SupabaseContext"; // Import useSupabase
 import { createJournalEntry, getJournalEntriesByUserId, updateJournalEntry, deleteJournalEntry } from '@/services/journalEntryService'; // Added journal entry services and updateJournalEntry
 import { getTagsByUserId, getEntryTagsByEntryId } from '@/services/tagService'; // Added tag service and getEntryTagsByEntryId
 import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Import project service
@@ -78,16 +79,10 @@ const sortDiariesByEntryTimestamp = (a: JournalEntryWithTags, b: JournalEntryWit
 };
 
 const DiaryPage = () => {
-  const { getToken, userId } = useAuth();
-  const supabase = useMemo(() => {
-    // Only create a new client if getToken is available
-    // For server components or environments where getToken might not be immediately ready,
-    // you might need a more robust way to handle this, or ensure it's only called client-side.
+  const { userId } = useAuth(); // getToken removed as it's not directly used here anymore
+  const supabase = useSupabase();
 
-    return createClerkSupabaseClient(getToken);
-  }, [getToken]);
-
-  const [diaries, setDiaries] = useState<JournalEntryWithTags[]>([]); // Initialize with empty array, ensure type is JournalEntryWithTags
+  const [diaries, setDiaries] = useState<JournalEntryWithTags[]>([]);
   const [isLoadingDiaries, setIsLoadingDiaries] = useState(true);
   const [selectedDiaryId, setSelectedDiaryId] = useState<string | null>(null);
   // const [rightPanelView, setRightPanelView] = useState<'view' | 'create_deprecated'>('view'); // Removed unused state
@@ -143,7 +138,7 @@ const DiaryPage = () => {
   useEffect(() => {
     if (search.createNew === true) {
       if (!createNewHandledRef.current) { // Check if already handled
-        if (userId && supabase) {
+        if (userId && supabase) { // Check for supabase client availability
           createNewHandledRef.current = true; // Mark as handled
           handleCreateNew(); // MODIFIED: Call without arguments, it will use activeFilterProjectId from state
           navigate({
@@ -178,7 +173,7 @@ const DiaryPage = () => {
 
   // Fetch initial diaries and user tags
   useEffect(() => {
-    if (userId && supabase) {
+    if (userId && supabase) { // Check for supabase client availability
       setIsLoadingDiaries(true);
       getJournalEntriesByUserId(supabase, userId)
         .then(async fetchedDiaries => {
@@ -253,7 +248,7 @@ const DiaryPage = () => {
   };
 
   const handleUpdateDiary = async (updates: Partial<JournalEntry>) => {
-    if (!selectedDiaryId || !supabase) {
+    if (!selectedDiaryId || !supabase) { // Check for supabase client availability
       setError("No diary selected or Supabase client not available for update.");
       throw new Error("Update preconditions not met."); // Throw error to be caught by DiaryDetailView
     }
@@ -277,7 +272,7 @@ const DiaryPage = () => {
   };
 
   const handleDeleteDiary = async (diaryIdToDelete: string) => {
-    if (!supabase) {
+    if (!supabase) { // Check for supabase client availability
       setError("Supabase client not available for delete.");
       throw new Error("Delete preconditions not met.");
     }
@@ -558,6 +553,7 @@ const DiaryPage = () => {
         ) : filteredDiaries.length > 0 ? (
           <div className="space-y-3">
             {filteredDiaries.map((diaryEntry) => {
+              if (!supabase) return null; // Ensures supabase is non-null for DiaryCard
               return (
                 <DiaryCard 
                   key={diaryEntry.id} 
@@ -585,6 +581,7 @@ const DiaryPage = () => {
         ) : (
           <div className="space-y-3">
             {filteredDiaries.map((diaryEntry) => {
+              if (!supabase) return null; // Ensures supabase is non-null for DiaryCard
               return (
                 <DiaryCard 
                   key={diaryEntry.id} 
@@ -602,7 +599,7 @@ const DiaryPage = () => {
 
       <main className="flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-[#E4EFE7]/50 rounded-tl-2xl md:rounded-tl-none">
         {/* Use currentSelectedDiary for the detail view to ensure it shows even if filtered out from the list */}
-        {currentSelectedDiary ? (
+        {currentSelectedDiary && supabase ? (
           <DiaryDetailView 
             key={currentSelectedDiary.id}
             diary={currentSelectedDiary} 

@@ -15,12 +15,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ModeToggle } from "@/components/shared/ModeToggle";
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import '../journal-theme.css'; 
 import { getProjectById } from "@/services/projectService";
-import { useSession } from "@clerk/clerk-react";
-import { createClerkSupabaseClient } from "@/utils/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { useAuth } from "@clerk/clerk-react";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import type { Project, Profile, JournalEntry } from "@/types/supabase";
 import StreakManagement from "@/components/journal/StreakManagement";
 import { Button } from "@/components/ui/Button";
@@ -33,7 +32,8 @@ export const Route = createFileRoute("/journal")({
 
 function JournalLayout() {
   // const { user } = useUser(); // Removed unused user variable
-  const { session } = useSession();
+  const { userId: currentUserId } = useAuth();
+  const supabase = useSupabase();
   // const params = useParams({ from: Route.id }); // Removed unused params
   const routerState = useRouterState();
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -44,14 +44,14 @@ function JournalLayout() {
   const [isLoadingProfileAndEntries, setIsLoadingProfileAndEntries] = useState(false);
   const [showStreakModalViaButton, setShowStreakModalViaButton] = useState(false);
 
-  const currentUserId = useMemo(() => session?.user.id, [session]);
+  // const currentUserId = useMemo(() => session?.user.id, [session]);
 
-  const activeSupabaseClient: SupabaseClient | null = useMemo(() => {
-    if (session) {
-      return createClerkSupabaseClient(() => session.getToken());
-    }
-    return null;
-  }, [session]);
+  // const activeSupabaseClient: SupabaseClientType | null = useMemo(() => {
+  //   if (session) {
+  //     return createClerkSupabaseClient(() => session.getToken());
+  //   }
+  //   return null;
+  // }, [session]);
 
   // const isProjectPage = routerState.location.pathname.includes('/journal/projects/');
   // Ensure projectId is correctly extracted. Since Route.id for /journal does not have $projectId, we need to be careful.
@@ -78,9 +78,9 @@ function JournalLayout() {
   }, []);
 
   useEffect(() => {
-    if (projectId && activeSupabaseClient) {
+    if (projectId && supabase) {
       setIsLoadingProjectName(true);
-      getProjectById(activeSupabaseClient, projectId)
+      getProjectById(supabase, projectId)
         .then((project: Project | null) => {
           if (project) {
             setProjectName(project.name);
@@ -98,13 +98,13 @@ function JournalLayout() {
     } else {
       setProjectName(null); // Reset if no longer on a project page or no projectId
     }
-  }, [projectId, activeSupabaseClient]);
+  }, [projectId, supabase]);
 
   useEffect(() => {
-    if (activeSupabaseClient && currentUserId) {
+    if (supabase && currentUserId) {
       setIsLoadingProfileAndEntries(true);
       const fetchProfile = async () => {
-        const { data, error } = await activeSupabaseClient
+        const { data, error } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", currentUserId)
@@ -118,7 +118,7 @@ function JournalLayout() {
       };
 
       const fetchEntries = async () => {
-        const { data, error } = await activeSupabaseClient
+        const { data, error } = await supabase
           .from("journal_entries")
           .select("*")
           .eq("user_id", currentUserId)
@@ -150,7 +150,7 @@ function JournalLayout() {
       setJournalEntriesData([]);
       setIsLoadingProfileAndEntries(false); 
     }
-  }, [activeSupabaseClient, currentUserId]);
+  }, [supabase, currentUserId]);
 
   const getBreadcrumbPath = () => {
     const path = routerState.location.pathname;
@@ -242,9 +242,9 @@ function JournalLayout() {
           <Outlet />
         </main>
         {/* Render StreakManagement if data is available */}
-        {activeSupabaseClient && currentUserId && userProfileData && !isLoadingProfileAndEntries && (
+        {supabase && currentUserId && userProfileData && !isLoadingProfileAndEntries && (
           <StreakManagement
-            supabase={activeSupabaseClient}
+            supabase={supabase}
             userId={currentUserId}
             userProfile={userProfileData}
             journalEntries={journalEntriesData}

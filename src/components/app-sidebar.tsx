@@ -26,13 +26,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { UserButton, useUser, useSession } from "@clerk/clerk-react";
+import { UserButton, useUser } from "@clerk/clerk-react";
 import logoBean from "@/images/logo_bean_journal.png";
 import { Link } from "@tanstack/react-router";
 import { ThemeShopPage } from '@/routes/theme-shop';
 import { getProjectsByUserId, createProject, updateProject, deleteProject } from "@/services/projectService";
 import type { Project } from "@/types/supabase";
-import { createClerkSupabaseClient } from "@/utils/supabaseClient";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { Button } from "@/components/ui/Button";
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as LabelPrimitive from '@radix-ui/react-label';
@@ -92,7 +92,7 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isSignedIn, user } = useUser();
-  const { session } = useSession();
+  const supabase = useSupabase();
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = React.useState(true);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = React.useState(false);
@@ -106,17 +106,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [editProjectDescription, setEditProjectDescription] = React.useState("");
   const [editProjectColor, setEditProjectColor] = React.useState("#FFFFFF");
 
-  const activeSupabaseClient = React.useMemo(() => {
-    if (session) {
-      return createClerkSupabaseClient(() => session.getToken());
-    }
-    return null;
-  }, [session]);
-
   React.useEffect(() => {
-    if (user?.id && activeSupabaseClient) {
+    if (user?.id && supabase) {
       setIsLoadingProjects(true);
-      getProjectsByUserId(activeSupabaseClient, user.id)
+      getProjectsByUserId(supabase, user.id)
         .then((data) => {
           setProjects(data || []);
         })
@@ -131,15 +124,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       setProjects([]);
       setIsLoadingProjects(false);
     }
-  }, [user?.id, activeSupabaseClient]);
+  }, [user?.id, supabase]);
 
   const handleCreateProject = async () => {
-    if (!newProjectName.trim() || !user?.id || !activeSupabaseClient) {
-      console.error("Project name and user ID are required.");
+    if (!newProjectName.trim() || !user?.id || !supabase) {
+      console.error("Project name, user ID, and Supabase client are required.");
       return;
     }
     try {
-      const created = await createProject(activeSupabaseClient, {
+      const created = await createProject(supabase, {
         user_id: user.id,
         name: newProjectName,
         description: newProjectDescription || undefined,
@@ -168,12 +161,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleUpdateProject = async () => {
-    if (!editingProject || !editProjectName.trim() || !activeSupabaseClient) {
-      console.error("Editing project data is missing or invalid.");
+    if (!editingProject || !editProjectName.trim() || !supabase) {
+      console.error("Editing project data is missing, invalid, or Supabase client not available.");
       return;
     }
     try {
-      const updated = await updateProject(activeSupabaseClient, editingProject.id!, {
+      const updated = await updateProject(supabase, editingProject.id!, {
         name: editProjectName,
         description: editProjectDescription || undefined,
         color_hex: editProjectColor || undefined,
@@ -191,13 +184,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleDeleteProject = async (projectId: string) => {
-    if (!activeSupabaseClient) {
+    if (!supabase) {
       console.error("Supabase client not available.");
       return;
     }
     if (window.confirm("Are you sure you want to delete this project and all its associated data? This action cannot be undone.")) {
       try {
-        const success = await deleteProject(activeSupabaseClient, projectId);
+        const success = await deleteProject(supabase, projectId);
         if (success) {
           setProjects(prev => prev.filter(p => p.id !== projectId));
         } else {
@@ -216,6 +209,41 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </div>
     );
   }
+
+  const projectListContent = () => {
+    if (!supabase && isSignedIn) {
+      return <div className="p-2 text-xs text-center text-gray-500">Initializing Supabase connection...</div>;
+    }
+    if (isLoadingProjects) {
+      return <div className="p-2 text-xs text-center text-gray-500">Loading projects...</div>;
+    }
+    if (projects.length > 0) {
+      return (
+        <NavProjects
+          projects={projects}
+          onEditProject={openEditModal}
+          onDeleteProject={handleDeleteProject}
+        />
+      );
+    }
+    if (supabase && !isLoadingProjects && projects.length === 0) {
+      return (
+        <div className="px-4 py-2">
+          <p className="text-xs text-center text-gray-500 mb-2">No projects yet.</p>
+          <Button
+            variant="outline"
+            className="w-full text-sm"
+            onClick={() => setIsCreateProjectModalOpen(true)}
+            disabled={!supabase}
+          >
+            <PlusSquare size={16} className="mr-2" />
+            Create New Project
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <Sidebar
@@ -244,33 +272,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <h3 className="text-xs font-medium text-[#1e1742]/70 dark:text-white/70">
               Projects
             </h3>
-            <Button variant="ghost" size="icon" onClick={() => setIsCreateProjectModalOpen(true)} className="h-7 w-7 text-[#1e1742]/70 dark:text-white/70 hover:bg-muted">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setIsCreateProjectModalOpen(true)} 
+              className="h-7 w-7 text-[#1e1742]/70 dark:text-white/70 hover:bg-muted"
+              disabled={!supabase}
+            >
               <PlusSquare size={16} />
               <span className="sr-only">Create New Project</span>
             </Button>
           </div>
         </div>
-        {isLoadingProjects ? (
-          <div className="p-2 text-xs text-center text-gray-500">Loading projects...</div>
-        ) : projects.length > 0 ? (
-          <NavProjects
-            projects={projects}
-            onEditProject={openEditModal}
-            onDeleteProject={handleDeleteProject}
-          />
-        ) : (
-          <div className="px-4 py-2">
-            <p className="text-xs text-center text-gray-500 mb-2">No projects yet.</p>
-            <Button
-              variant="outline"
-              className="w-full text-sm"
-              onClick={() => setIsCreateProjectModalOpen(true)}
-            >
-              <PlusSquare size={16} className="mr-2" />
-              Create New Project
-            </Button>
-          </div>
-        )}
+        {projectListContent()}
         <div className="px-2 py-2 mt-4">
           <h3 className="px-2 text-xs font-medium text-[#1e1742]/70 dark:text-white/70">
             Trending Tags
@@ -306,16 +320,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       label="My Profile"
                       labelIcon={<UserCircle size={16} />}
                     />
-                    {/* <UserButton.Link 
-                      href="/user/account"
-                      label="Account"
-                      labelIcon={<Settings size={16} />}
-                    />
-                    <UserButton.Link 
-                      href="/user/security"
-                      label="Security"
-                      labelIcon={<Shield size={16} />}
-                    /> */}
                   </UserButton.MenuItems>
                   <UserButton.UserProfilePage
                     label="Theme"
@@ -326,7 +330,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <h1 className="text-[1.05rem] font-bold mb-2 border-b pb-4">
                         Theme Settings
                       </h1>
-
                       <div className="space-y-8 py-4">
                         <div className="border-b pb-6">
                           <h2 className="text-[0.8rem] mb-4 font-medium text-[#212126] dark:text-gray-300">
@@ -340,21 +343,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                 backgroundImage:
                                   "url('/images/themes/theme1.jpg')",
                               }}
-                            >
-                              {/* Content removed as image is background */}
-                            </button>
+                            ></button>
                             <button
                               className="h-20 w-full rounded-xl shadow-md focus:ring-2 focus:ring-offset-2 focus:ring-[#9645ff] transition-all hover:scale-105 active:scale-95 overflow-hidden bg-cover bg-center"
                               style={{
                                 backgroundImage:
                                   "url('/images/themes/theme2.jpg')",
                               }}
-                            >
-                              {/* Content removed as image is background */}
-                            </button>
+                            ></button>
                           </div>
                         </div>
-
                         <div className="border-b pb-6">
                           <h2 className="text-[0.8rem] mb-3 font-medium text-[#212126] dark:text-gray-300">
                             Font
@@ -368,7 +366,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             </button>
                           </div>
                         </div>
-
                         <div className="mt-6">
                           <h3 className="text-[0.8rem] mb-3 font-medium text-[#212126] dark:text-gray-300">
                             Font Size
@@ -470,7 +467,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <button 
                 type="button"
                 onClick={handleCreateProject} 
-                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2"
+                disabled={!supabase || !newProjectName.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 Create Project
               </button>
@@ -546,7 +544,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <button 
                 type="button"
                 onClick={handleUpdateProject} 
-                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2"
+                disabled={!supabase || !editProjectName.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#99BC85] hover:bg-[#8ab076] rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#99BC85] focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 Save Changes
               </button>

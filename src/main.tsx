@@ -9,6 +9,9 @@ import { ThemeProvider as ShadThemeProvider } from "@/components/shared/ThemePro
 // Import your custom ThemeProvider for application themes
 import { ThemeProvider as CustomThemeProvider } from './contexts/ThemeContext';
 
+// Import the Supabase Provider
+import { SupabaseProvider } from './contexts/SupabaseContext';
+
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 
@@ -61,7 +64,9 @@ export function ClerkAndThemeProvider({ children }: { children: React.ReactNode 
 			// afterSignUpUrl="/sign-up/continue" // Deprecated, use fallback/force instead
 		>
 			<ShadThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-				{children}
+				<SupabaseProvider>
+					{children}
+				</SupabaseProvider>
 			</ShadThemeProvider>
 		</ClerkProvider>
 	);

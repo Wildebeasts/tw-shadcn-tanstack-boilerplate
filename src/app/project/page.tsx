@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getProjectById } from '@/services/projectService';
 import { getJournalEntriesByProjectId } from '@/services/journalEntryService'; // Corrected service import path
 import type { Project, JournalEntry } from '@/types/supabase';
-import { useSession } from '@clerk/clerk-react';
-import { createClerkSupabaseClient } from '@/utils/supabaseClient';
+import { useSupabase } from "@/contexts/SupabaseContext"; // Import useSupabase
 import { Link } from '@tanstack/react-router';
 import { CalendarDays } from 'lucide-react'; // Added for date display
 import { moodOptions } from '@/components/diary/MoodSelector'; // Added for mood display
@@ -60,23 +59,17 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
   const [isLoadingEntries, setIsLoadingEntries] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { session } = useSession();
-  const activeSupabaseClient = useMemo(() => {
-    if (session) {
-      return createClerkSupabaseClient(() => session.getToken());
-    }
-    return null;
-  }, [session]);
+  const supabase = useSupabase(); // New way
 
   useEffect(() => {
-    if (!projectId || !activeSupabaseClient) {
+    if (!projectId || !supabase) { // Use supabase from context
       setIsLoadingProject(false);
       setError(projectId ? 'Could not initialize Supabase client.' : 'Project ID is missing.');
       return;
     }
     setIsLoadingProject(true);
     setError(null); // Reset error before fetching
-    getProjectById(activeSupabaseClient, projectId)
+    getProjectById(supabase, projectId) // Pass supabase client
       .then(data => {
         setProject(data);
         if (!data) setError('Project not found.');
@@ -86,16 +79,16 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
         setError('Failed to load project details.');
       })
       .finally(() => setIsLoadingProject(false));
-  }, [projectId, activeSupabaseClient]);
+  }, [projectId, supabase]);
 
   useEffect(() => {
-    if (!project || !project.id || !activeSupabaseClient) { // Ensured project and project.id exist
+    if (!project || !project.id || !supabase) { // Use supabase from context, ensured project and project.id exist
       setJournalEntries([]);
       setIsLoadingEntries(project ? true : false); // Only set loading if project was defined
       return;
     }
     setIsLoadingEntries(true);
-    getJournalEntriesByProjectId(activeSupabaseClient, project.id) // project.id is now guaranteed to be a string
+    getJournalEntriesByProjectId(supabase, project.id) // Pass supabase client, project.id is now guaranteed to be a string
       .then(data => {
         setJournalEntries(data || []);
       })
@@ -104,7 +97,7 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
         // setError('Failed to load journal entries for this project.'); // Avoid overwriting main project error
       })
       .finally(() => setIsLoadingEntries(false));
-  }, [project, activeSupabaseClient]); // project.id is implicitly covered by project dependency
+  }, [project, supabase]); // project.id is implicitly covered by project dependency
 
   if (isLoadingProject) {
     return <div className="p-4 text-center">Loading project details...</div>;
