@@ -26,14 +26,26 @@ steps:
       REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
       DEPLOY_COMMAND: "cd /root/Bean-Journal-Web-FE && npm install -g pm2 && pm2 delete BJ_FE || true && pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000" # Your actual deploy command
     commands:
-      - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
+      - apt-get update -y && apt-get install -y openssh-client rsync
+      
+      # Setup SSH
       - mkdir -p ~/.ssh
-      - echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_deploy
+      - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa_deploy
       - chmod 600 ~/.ssh/id_rsa_deploy
+      - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
       
-
-      - scp -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no -r ./dist ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TARGET_PATH}
+      # Create target directory
+      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
       
-      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} "${DEPLOY_COMMAND}"
+      # Copy files using rsync (better than scp for directories)
+      - rsync -avz -e "ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
       
-      - rm -f ~/.ssh/id_rsa_deploy
+      # Deploy with PM2
+      - |
+        ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "
+          cd $REMOTE_TARGET_PATH/Bean-Journal-Web-FE &&
+          npm install -g pm2 serve &&
+          pm2 delete BJ_FE || true &&
+          pm2 start serve --name BJ_FE -- -s ./dist/ -l 3000 &&
+          pm2 save
+        "
