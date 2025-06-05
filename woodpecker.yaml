@@ -2,7 +2,9 @@ steps:
   - name: frontend
     image: bash
     commands:
+      - curl -fsSL https://raw.githubusercontent.com/mklement0/n-install/stable/bin/n-install | bash -s -- -y 24
       - node -v
+      - corepack enable pnpm
       - pnpm install
       - pnpm build
       - pm2 delete BJ_FE
