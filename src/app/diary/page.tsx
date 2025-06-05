@@ -600,7 +600,7 @@ const DiaryPage = () => {
         )}
       </aside>
 
-      <main className="flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-pink-50 rounded-tl-2xl md:rounded-tl-none">
+      <main className="flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-[#E4EFE7]/50 rounded-tl-2xl md:rounded-tl-none">
         {/* Use currentSelectedDiary for the detail view to ensure it shows even if filtered out from the list */}
         {currentSelectedDiary ? (
           <DiaryDetailView 
