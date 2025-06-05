@@ -35,7 +35,7 @@ steps:
       - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
       
       # Create target directory
-      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
+      - ssh -vvv -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
       
       # Copy files using rsync (better than scp for directories)
       - rsync -avz -e "ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
