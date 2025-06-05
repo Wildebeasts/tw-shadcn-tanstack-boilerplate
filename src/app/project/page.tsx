@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { getProjectById } from '@/services/projectService';
-import { getJournalEntriesByProjectId } from '@/services/journalEntryService'; // Corrected service import path
-import type { Project, JournalEntry } from '@/types/supabase';
+import React, { useEffect, useState } from "react";
+import { getProjectById } from "@/services/projectService";
+import { getJournalEntriesByProjectId } from "@/services/journalEntryService"; // Corrected service import path
+import type { Project, JournalEntry } from "@/types/supabase";
 import { useSupabase } from "@/contexts/SupabaseContext"; // Import useSupabase
-import { Link } from '@tanstack/react-router';
-import { CalendarDays } from 'lucide-react'; // Added for date display
-import { moodOptions } from '@/components/diary/MoodSelector'; // Added for mood display
-import { Image as ImageIcon } from 'lucide-react'; // Added for image display
+import { Link } from "@tanstack/react-router";
+import { CalendarDays } from "lucide-react"; // Added for date display
+import { moodOptions } from "@/components/diary/MoodSelector"; // Added for mood display
+import { Image as ImageIcon } from "lucide-react"; // Added for image display
 
 // Helper function to parse BlockNote JSON content (copied from user-profile/page.tsx)
 const parseBlockNoteJsonContent = (
@@ -26,13 +26,13 @@ const parseBlockNoteJsonContent = (
               readableContent += item.text + " ";
             }
           }
-          readableContent += "\n"; 
+          readableContent += "\n";
         } else if (
           block.type === "image" &&
           block.props &&
           typeof block.props.url === "string"
         ) {
-          if (!firstImageUrl) { 
+          if (!firstImageUrl) {
             firstImageUrl = block.props.url;
           }
         }
@@ -42,7 +42,7 @@ const parseBlockNoteJsonContent = (
   } catch (error) {
     console.error("Error parsing BlockNote JSON content:", error);
     return {
-      textContent: typeof jsonContent === 'string' ? jsonContent : "",
+      textContent: typeof jsonContent === "string" ? jsonContent : "",
       imageUrl: null,
     };
   }
@@ -62,38 +62,44 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
   const supabase = useSupabase(); // New way
 
   useEffect(() => {
-    if (!projectId || !supabase) { // Use supabase from context
+    if (!projectId || !supabase) {
+      // Use supabase from context
       setIsLoadingProject(false);
-      setError(projectId ? 'Could not initialize Supabase client.' : 'Project ID is missing.');
+      setError(
+        projectId
+          ? "Could not initialize Supabase client."
+          : "Project ID is missing."
+      );
       return;
     }
     setIsLoadingProject(true);
     setError(null); // Reset error before fetching
     getProjectById(supabase, projectId) // Pass supabase client
-      .then(data => {
+      .then((data) => {
         setProject(data);
-        if (!data) setError('Project not found.');
+        if (!data) setError("Project not found.");
       })
-      .catch(err => {
-        console.error('Error fetching project:', err);
-        setError('Failed to load project details.');
+      .catch((err) => {
+        console.error("Error fetching project:", err);
+        setError("Failed to load project details.");
       })
       .finally(() => setIsLoadingProject(false));
   }, [projectId, supabase]);
 
   useEffect(() => {
-    if (!project || !project.id || !supabase) { // Use supabase from context, ensured project and project.id exist
+    if (!project || !project.id || !supabase) {
+      // Use supabase from context, ensured project and project.id exist
       setJournalEntries([]);
       setIsLoadingEntries(project ? true : false); // Only set loading if project was defined
       return;
     }
     setIsLoadingEntries(true);
     getJournalEntriesByProjectId(supabase, project.id) // Pass supabase client, project.id is now guaranteed to be a string
-      .then(data => {
+      .then((data) => {
         setJournalEntries(data || []);
       })
-      .catch(err => {
-        console.error('Error fetching journal entries for project:', err);
+      .catch((err) => {
+        console.error("Error fetching journal entries for project:", err);
         // setError('Failed to load journal entries for this project.'); // Avoid overwriting main project error
       })
       .finally(() => setIsLoadingEntries(false));
@@ -103,7 +109,8 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
     return <div className="p-4 text-center">Loading project details...</div>;
   }
 
-  if (error && !project) { // Show error if project loading failed and project is still null
+  if (error && !project) {
+    // Show error if project loading failed and project is still null
     return <div className="p-4 text-center text-red-500">{error}</div>;
   }
 
@@ -111,13 +118,17 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
     // This case should ideally be covered by the error state if fetching failed
     // or if project just wasn't found (which sets an error too).
     // Adding a generic message if somehow reached.
-    return <div className="p-4 text-center">Project could not be loaded or found.</div>;
+    return (
+      <div className="p-4 text-center">
+        Project could not be loaded or found.
+      </div>
+    );
   }
 
   const formatDate = (isoString?: string) => {
-    if (!isoString) return 'N/A';
+    if (!isoString) return "N/A";
     try {
-      return new Date(isoString).toLocaleDateString('en-US', {
+      return new Date(isoString).toLocaleDateString("en-US", {
         day: "2-digit",
         weekday: "short",
         month: "short",
@@ -129,9 +140,12 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
 
   return (
     <div className="container mx-auto p-4 md:p-6 flex flex-col gap-6 bg-gray-50 dark:bg-gray-900 h-[calc(100vh-100px)]">
-      <div className="overflow-hidden shadow-lg bg-white dark:bg-gray-800 rounded-lg"> 
-        <div style={{ backgroundColor: project.color_hex || '#7DD3FC' }} className="h-10 w-full"></div>
-        <div className="p-4 md:p-6"> 
+      <div className="overflow-hidden shadow-lg bg-white dark:bg-gray-800 rounded-lg">
+        <div
+          style={{ backgroundColor: project.color_hex || "#7DD3FC" }}
+          className="h-10 w-full"
+        ></div>
+        <div className="p-4 md:p-6">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-white">
             {project.name}
           </h1>
@@ -149,73 +163,91 @@ const ProjectPage: React.FC<ProjectPageProps> = ({ projectId }) => {
       </div>
 
       <section className="flex-grow min-h-0 overflow-y-auto">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-700 dark:text-gray-200">Associated Diaries</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-700 dark:text-gray-200">
+          Associated Diaries
+        </h2>
         {isLoadingEntries && !journalEntries.length ? (
-          <div className="text-center py-6 text-gray-500 dark:text-gray-400">Loading diaries...</div>
+          <div className="text-center py-6 text-gray-500 dark:text-gray-400">
+            Loading diaries...
+          </div>
         ) : journalEntries.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {journalEntries.map(entry => {
-              const moodOption = entry.manual_mood_label 
-                ? moodOptions.find(m => m.value === entry.manual_mood_label) 
+            {journalEntries.map((entry) => {
+              const moodOption = entry.manual_mood_label
+                ? moodOptions.find((m) => m.value === entry.manual_mood_label)
                 : null;
               const { imageUrl } = parseBlockNoteJsonContent(entry.content);
 
               return (
-                <div 
-                  key={entry.id} 
-                  className="p-4 rounded-lg shadow-md flex gap-4 items-start group text-gray-800 dark:text-gray-100 transition-all duration-200 ease-in-out border bg-[#F5F8F4] hover:bg-[#E9F0E6] border-[#DDE8DA] hover:border-[#CFE0CA] dark:bg-slate-700/70 dark:hover:bg-slate-700/90 dark:border-slate-600 dark:hover:border-slate-500"
-                >
-                  {/* Image Section (Left) */}
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 bg-gray-200 dark:bg-slate-600/50 rounded-lg flex items-center justify-center overflow-hidden">
-                    {imageUrl ? (
-                      <img src={imageUrl} alt="Diary image" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon size={32} className="text-gray-400 dark:text-slate-500" />
-                    )}
-                  </div>
-
-                  {/* Content Section (Right) */}
-                  <div className="flex-grow flex flex-col min-w-0 h-full"> {/* h-full to allow mt-auto for date*/}
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 
-                        className="text-lg font-semibold text-slate-700 dark:text-slate-200 truncate mr-2 flex-grow"
-                        style={{ fontFamily: 'Readex Pro, sans-serif' }}
-                      >
-                        <Link 
-                          to={`/journal/diary`} 
-                          search={{ entryId: entry.id }} 
-                          className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                        >
-                          {entry.title || 'Untitled Entry'}
-                        </Link>
-                      </h3>
-                      {moodOption && (
-                        <img 
-                          src={moodOption.emojiPath} 
-                          alt={moodOption.label} 
-                          className="w-6 h-6 flex-shrink-0" 
-                          title={`Mood: ${moodOption.label}`} 
+                <Link to={`/journal/diary`} search={{ entryId: entry.id }}>
+                  <div
+                    key={entry.id}
+                    className="p-4 rounded-lg shadow-md flex gap-4 items-start group text-gray-800 dark:text-gray-100 transition-all duration-200 ease-in-out border bg-[#F5F8F4] hover:bg-[#E9F0E6] border-[#DDE8DA] hover:border-[#CFE0CA] dark:bg-slate-700/70 dark:hover:bg-slate-700/90 dark:border-slate-600 dark:hover:border-slate-500"
+                  >
+                    {/* Image Section (Left) */}
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 bg-gray-200 dark:bg-slate-600/50 rounded-lg flex items-center justify-center overflow-hidden">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt="Diary image"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon
+                          size={32}
+                          className="text-gray-400 dark:text-slate-500"
                         />
                       )}
                     </div>
-                    
-                    {/* Spacer to push date to bottom */}
-                    <div className="flex-grow"></div> 
-                    
-                    <div 
-                      className="flex items-center text-xs text-slate-400 dark:text-slate-500 pt-1"
-                      style={{ fontFamily: 'Readex Pro, sans-serif' }}
-                    >
-                      <CalendarDays size={14} className="mr-1.5 flex-shrink-0" />
-                      <span>{formatDate(entry.entry_timestamp)}</span>
+
+                    {/* Content Section (Right) */}
+                    <div className="flex-grow flex flex-col min-w-0 h-full">
+                      {" "}
+                      {/* h-full to allow mt-auto for date*/}
+                      <div className="flex justify-between items-start mb-1">
+                        <h3
+                          className="text-lg font-semibold text-slate-700 dark:text-slate-200 truncate mr-2 flex-grow"
+                          style={{ fontFamily: "Readex Pro, sans-serif" }}
+                        >
+                          <Link
+                            to={`/journal/diary`}
+                            search={{ entryId: entry.id }}
+                            className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                          >
+                            {entry.title || "Untitled Entry"}
+                          </Link>
+                        </h3>
+                        {moodOption && (
+                          <img
+                            src={moodOption.emojiPath}
+                            alt={moodOption.label}
+                            className="w-6 h-6 flex-shrink-0"
+                            title={`Mood: ${moodOption.label}`}
+                          />
+                        )}
+                      </div>
+                      {/* Spacer to push date to bottom */}
+                      <div className="flex-grow"></div>
+                      <div
+                        className="flex items-center text-xs text-slate-400 dark:text-slate-500 pt-1"
+                        style={{ fontFamily: "Readex Pro, sans-serif" }}
+                      >
+                        <CalendarDays
+                          size={14}
+                          className="mr-1.5 flex-shrink-0"
+                        />
+                        <span>{formatDate(entry.entry_timestamp)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
         ) : (
-          <p className="text-center py-6 text-gray-500 dark:text-gray-400">No journal entries found for this project yet.</p>
+          <p className="text-center py-6 text-gray-500 dark:text-gray-400">
+            No journal entries found for this project yet.
+          </p>
         )}
       </section>
     </div>
