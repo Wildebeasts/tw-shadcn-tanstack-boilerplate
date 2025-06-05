@@ -3,7 +3,7 @@ steps:
     image: bash
     commands:
       - curl -fsSL https://raw.githubusercontent.com/mklement0/n-install/stable/bin/n-install | bash -s -- -y 24
-      - export N_PREFIX="$HOME/n
+      - export N_PREFIX="$HOME/n"
       - export PATH="$N_PREFIX/bin:$PATH"
   - name: frontend
     image: bash
