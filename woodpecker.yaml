@@ -1,0 +1,7 @@
+steps:
+  - name: frontend
+    image: bash
+    commands:
+      - curl -fsSL https://raw.githubusercontent.com/mklement0/n-install/stable/bin/n-install | bash -s 24
+      - corepack enable pnpm
+      - pnpm -v
