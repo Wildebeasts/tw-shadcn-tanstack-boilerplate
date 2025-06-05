@@ -30,22 +30,18 @@ steps:
       - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
       
       # Setup SSH
-      - mkdir -p ~/.ssh
-      - echo "$SSHK" > ~/.ssh/id_rsa_deploy
-      - chmod 700 ~/.ssh/id_rsa_deploy
-      - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+      - mkdir -p $WOODPECKER_WORKSPACE/.ssh
+      - echo "$SSHK" > $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
+      - chmod 700 $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
+      - ssh-keyscan -H $REMOTE_HOST >> $WOODPECKER_WORKSPACE/.ssh/known_hosts
       # Create target directory
-      - ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
-      - mkdir -p ~/.ssh
-      - echo "$SSHK" > ~/.ssh/id_rsa_deploy
-      - chmod 700 ~/.ssh/id_rsa_deploy
-      - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+      - ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
       # Copy files using rsync (better than scp for directories)
-      - rsync -avz -e "ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
+      - rsync -avz -e "ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
       
       # Deploy with PM2
       - |
-        ssh -i ~/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "
+        ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "
           cd $REMOTE_TARGET_PATH/Bean-Journal-Web-FE &&
           npm install -g pm2 serve &&
           pm2 delete BJ_FE || true &&
