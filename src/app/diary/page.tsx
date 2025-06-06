@@ -252,7 +252,7 @@ const DiaryPage = () => {
           // Only set a default if no entryId from URL is currently being processed (indicated by entryIdFromUrlRef.current)
           // and if no diary is already selected.
           if (sortedDiaries.length > 0 && !entryIdFromUrlRef.current) {
-            setSelectedDiaryId && !isMobile(currentSelectedId => {
+            !isMobile && setSelectedDiaryId(currentSelectedId => {
               // If nothing is selected yet (currentSelectedId is null), select the first diary.
               // Otherwise, keep the existing selection.
               return currentSelectedId === null ? sortedDiaries[0].id! : currentSelectedId;
