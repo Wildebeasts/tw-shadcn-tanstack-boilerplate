@@ -186,23 +186,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     baseURL: "https://api.groq.com/openai/v1/chat/completions",
   });
 
-  const originalGroqModel = createGroq({
-    // call via our proxy client
+  const model = createGroq({
     ...client.getProviderSettings("groq"),
   })("llama-3.3-70b-versatile");
-
-  const groqModel = {
-    ...originalGroqModel,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    doStream: async (params: any) => {
-      const { prompt: messages, ...rest } = params;
-      console.log(
-        "BlockNoteAI prompt to Groq:",
-        JSON.stringify(messages, null, 2)
-      );
-      return originalGroqModel.doStream({ prompt: messages, ...rest });
-    },
-  };
 
   const schema = BlockNoteSchema.create({
     blockSpecs: {
@@ -288,7 +274,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     },
     extensions: [
       createAIExtension({
-        model: groqModel,
+        model: model,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
     ],
