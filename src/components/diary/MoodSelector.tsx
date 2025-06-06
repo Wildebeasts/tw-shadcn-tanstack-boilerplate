@@ -43,7 +43,7 @@ export const moodOptions: MoodOption[] = [
   {
     label: "Mad",
     value: "mad",
-    emojiPath: "/images/bean-journey/figma/emoji_face_mad.png",
+    emojiPath: "/images/bean-journey/figma/emoji_face_05.png",
     bgColor: "bg-red-100",
     textColor: "text-red-700",
   },

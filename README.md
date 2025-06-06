@@ -2,6 +2,7 @@
 ![repository-open-graph-template(1)](https://github.com/user-attachments/assets/2117493b-d280-41b5-b081-30e94247f52e)
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/1yl5d.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
+[![woodpecker-ci](https://woodpecker.beanjournal.site/api/badges/1/status.svg)](https://woodpecker.beanjournal.site/repos/1)
 # Bean Journal
 
 A digital companion for coffee enthusiasts to track their coffee journey, explore new beans, and connect with other coffee lovers.

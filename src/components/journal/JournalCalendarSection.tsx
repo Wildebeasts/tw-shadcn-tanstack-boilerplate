@@ -44,7 +44,7 @@ const JournalCalendarSection: React.FC<JournalCalendarSectionProps> = ({
         textBg = "bg-[#FF4BEF]";
         currentMood = "sad";
       } else if (entryMood === "mad") {
-        emoji = "/images/bean-journey/figma/emoji_face_mad.png";
+        emoji = "/images/bean-journey/figma/emoji_face_05.png";
         emojiBg = "bg-[#FFDDDD]";
         textBg = "bg-[#FF8888]";
         currentMood = "mad";

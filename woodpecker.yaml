@@ -1,0 +1,54 @@
+steps:
+  - name: Building FE
+    image: bash
+    environment:
+      # Make Woodpecker secrets available as environment variables in this step
+      ENVI:
+        from_secret: ENVIRONMENT
+    commands:
+      - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+      - export NVM_DIR="$HOME/.nvm" # Or wherever nvm is installed
+      - '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' # This loads nvm
+      - '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' # This loads nvm bash_completion
+      - nvm install node # Installs the latest version of Node.js
+      - nvm use node
+      - node -v
+      - npm -v
+      - corepack enable pnpm
+      - echo "$ENVI" | sudo tee .env > /dev/null
+      - pnpm install
+      - pnpm add @mantine/core
+      - pnpm add uuid
+      - pnpm build
+      - ls
+  - name: Deploy FE
+    image: bash # Using the official bash Docker image
+    environment:
+      # Make Woodpecker secrets available as environment variables in this step
+      SSHK:
+        from_secret: SSH_KEY
+      REMOTE_HOST: 192.168.2.245
+      REMOTE_USER: root
+      REMOTE_TARGET_PATH: /root # e.g., /var/www/myapp
+      DEPLOY_COMMAND: "cd /root/Bean-Journal-Web-FE && npm install -g pm2 && pm2 delete BJ_FE || true && pm2 start serve --name BJ_FE -- -s ./Bean-Journal-Web-FE/dist/ -l 3000" # Your actual deploy command
+    commands:
+      - sudo apt-get update -y && sudo apt-get install -y openssh-client rsync
+      
+      # Setup SSH
+      - sudo mkdir -p $WOODPECKER_WORKSPACE/.ssh
+      - echo "$SSHK" | sudo tee $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy > /dev/null
+      - sudo chmod 700 $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
+      - ssh-keyscan -H $REMOTE_HOST | sudo tee -a $WOODPECKER_WORKSPACE/.ssh/known_hosts > /dev/null
+      # Create target directory
+      - sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "sudo mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
+      # Copy files using rsync (better than scp for directories)
+      # rsync -avz -e "sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
+      - sudo scp -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no -r ./dist/* $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
+      # Deploy with PM2
+      - |
+        sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "
+          cd $REMOTE_TARGET_PATH/Bean-Journal-Web-FE &&
+          pm2 delete BJ_FE || true &&
+          pm2 start serve --name BJ_FE -- -s ./dist/ -l 3000 &&
+          pm2 save
+        "
