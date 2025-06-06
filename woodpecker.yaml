@@ -31,7 +31,8 @@ steps:
       
       # Setup SSH
       - sudo mkdir -p $WOODPECKER_WORKSPACE/.ssh
-      - sudo echo "$SSHK" > $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
+      - echo "$SSHK" | sudo tee $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy > /dev/null
+      - sudo cat $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
       - sudo chmod 700 $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
       - sudo ssh-keyscan -H $REMOTE_HOST >> $WOODPECKER_WORKSPACE/.ssh/known_hosts
       # Create target directory
