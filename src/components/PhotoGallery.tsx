@@ -17,6 +17,24 @@ interface DisplayImage {
   date?: string;
 }
 
+const getLayoutConfig = (index: number) => {
+  // Creates a repeating pattern for visual variety
+  switch (index % 9) {
+    case 0:
+      // A large square image
+      return { grid: 'lg:col-span-2 lg:row-span-2', aspect: 'aspect-w-1 aspect-h-1' };
+    case 1:
+      // A tall image
+      return { grid: 'lg:row-span-2', aspect: 'aspect-w-1 aspect-h-2' };
+    case 5:
+      // A wide image
+      return { grid: 'lg:col-span-2', aspect: 'aspect-w-2 aspect-h-1' };
+    default:
+      // Standard square image
+      return { grid: '', aspect: 'aspect-w-1 aspect-h-1' };
+  }
+};
+
 const PhotoGallery: React.FC<PhotoGalleryProps> = ({ supabase, userId }) => {
   const [images, setImages] = useState<DisplayImage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -97,33 +115,31 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ supabase, userId }) => {
 
       {!isLoading && !error && images.length > 0 && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-            {images.map((image, index) => (
-              <div
-                key={image.id}
-                className={`relative group overflow-hidden rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 aspect-w-1 aspect-h-1
-                  ${index === 0 || index === 5 ? 'sm:col-span-1 md:col-span-1 lg:row-span-2 lg:col-span-1' : ''}
-                  ${index === 6 || index === 8 ? 'sm:col-span-1 md:col-span-1 lg:col-span-1' : ''}
-                  ${index === 8 ? 'lg:col-span-2 lg:row-span-1' :''}
-                `}
-                style={{
-                  aspectRatio: '1/1',
-                }}
-              >
-                <img
-                  src={image.src}
-                  alt={image.alt}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300?text=Error'; }}
-                />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
-                  <p className="text-white text-sm font-medium">{image.alt}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 lg:grid-flow-row-dense">
+            {images.map((image, index) => {
+              const { grid, aspect } = getLayoutConfig(index);
+              return (
+                <div
+                  key={image.id}
+                  className={`relative group overflow-hidden rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 ${grid} ${aspect}`}
+                >
+                  <img
+                    src={image.src}
+                    alt={image.alt}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300?text=Error'
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
+                    <p className="text-white text-sm font-medium">{image.alt}</p>
+                  </div>
+                  <button className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all">
+                    <Trash2 size={16} />
+                  </button>
                 </div>
-                <button className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
           <div className="mt-8 text-center">
               <button className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-2.5 px-6 rounded-lg transition-colors text-sm">
