@@ -15,7 +15,7 @@ steps:
       - node -v
       - npm -v
       - corepack enable pnpm
-      - echo "$ENVI" | sudo tee $WOODPECKER_WORKSPACE/.env > /dev/null
+      - echo "$ENVI" | sudo tee /.env > /dev/null
       - sudo cat .env
       - pnpm install
       - pnpm add @mantine/core
