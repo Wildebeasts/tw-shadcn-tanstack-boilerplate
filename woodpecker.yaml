@@ -15,8 +15,7 @@ steps:
       - node -v
       - npm -v
       - corepack enable pnpm
-      - echo "$ENVI" | sudo tee /.env > /dev/null
-      - sudo cat .env
+      - echo "$ENVI" | sudo tee .env > /dev/null
       - pnpm install
       - pnpm add @mantine/core
       - pnpm add uuid
