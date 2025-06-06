@@ -15,8 +15,7 @@ steps:
       - node -v
       - npm -v
       - corepack enable pnpm
-      - echo "$ENVI" | sudo tee $WOODPECKER_WORKSPACE/.env > /dev/null
-      - cat .env
+      - echo "$ENVI" | sudo tee .env > /dev/null
       - pnpm install
       - pnpm add @mantine/core
       - pnpm add uuid
@@ -46,6 +45,7 @@ steps:
       # rsync -avz -e "sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no" ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
       - sudo scp -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no -r ./dist/* $REMOTE_USER@$REMOTE_HOST:$REMOTE_TARGET_PATH/Bean-Journal-Web-FE/dist/
       # Deploy with PM2
+      - |
         sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "
           cd $REMOTE_TARGET_PATH/Bean-Journal-Web-FE &&
           pm2 delete BJ_FE || true &&
