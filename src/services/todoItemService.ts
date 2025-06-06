@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TodoItem } from '../types/supabase';
 import { getJournalEntryById, updateJournalEntry } from './journalEntryService';
+import { toast } from 'sonner';
 
 // --- TodoItem Functions ---
 
@@ -9,13 +10,16 @@ import { getJournalEntryById, updateJournalEntry } from './journalEntryService';
 interface TextBlockContent {
   type: "text";
   text: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles: Record<string, any>;
 }
 
 interface BlockNoteBlock {
   id: string; // BlockNote blocks usually have an ID, though not strictly needed for this update logic
   type: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   props: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: TextBlockContent[] | any; // Simplified, can be more complex
   children: BlockNoteBlock[];
 }
@@ -25,7 +29,10 @@ export const getTodoItemsByUserId = async (supabase: SupabaseClient, userId: str
     .from('todo_items')
     .select('*, journal_entries (title)')
     .eq('user_id', userId);
-  if (error) throw error;
+  if (error) {
+    toast.error('Failed to fetch to-do items.');
+    throw error;
+  }
   return data as TodoItem[];
 };
 
@@ -34,7 +41,10 @@ export const getTodoItemsByEntryId = async (supabase: SupabaseClient, entryId: s
     .from('todo_items')
     .select('*')
     .eq('entry_id', entryId);
-  if (error) throw error;
+  if (error) {
+    toast.error('Failed to fetch to-do items for the entry.');
+    throw error;
+  }
   return data as TodoItem[];
 };
 
@@ -44,7 +54,11 @@ export const createTodoItem = async (supabase: SupabaseClient, todoData: Partial
     .insert([todoData])
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    toast.error('Failed to create to-do item.');
+    throw error;
+  }
+  toast.success('To-do item created successfully.');
   return data as TodoItem | null;
 };
 
@@ -56,7 +70,10 @@ export const updateTodoItem = async (supabase: SupabaseClient, todoId: string, u
     .select()
     .single();
 
-  if (todoUpdateError) throw todoUpdateError;
+  if (todoUpdateError) {
+    toast.error('Failed to update to-do item.');
+    throw todoUpdateError;
+  }
   if (!updatedTodoItem) return null;
 
   // If the updated todo item has an associated journal entry, update the entry's content
@@ -65,7 +82,7 @@ export const updateTodoItem = async (supabase: SupabaseClient, todoId: string, u
       const journalEntry = await getJournalEntryById(supabase, updatedTodoItem.entry_id);
 
       if (journalEntry && journalEntry.content) {
-        let blocks: BlockNoteBlock[] = JSON.parse(journalEntry.content);
+        const blocks: BlockNoteBlock[] = JSON.parse(journalEntry.content);
         let entryWasModified = false;
 
         const blockIndex = blocks.findIndex(
@@ -117,11 +134,13 @@ export const updateTodoItem = async (supabase: SupabaseClient, todoId: string, u
       }
     } catch (error) {
       console.error('Error updating journal entry content for todo item:', todoId, error);
+      toast.error('Failed to update journal entry with the new to-do item information.');
       // Decide if this error should be propagated or just logged.
       // For now, logging it and not interrupting the todo update flow.
     }
   }
 
+  toast.success('To-do item updated successfully.');
   return updatedTodoItem as TodoItem | null;
 };
 
@@ -135,6 +154,7 @@ export const deleteTodoItem = async (supabase: SupabaseClient, todoId: string) =
 
   if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: Row to return not found, which is fine if it was already deleted somehow
     console.error('Error fetching todo item before deletion:', fetchError);
+    toast.error('Error preparing to-do item for deletion.');
     throw fetchError;
   }
 
@@ -157,6 +177,7 @@ export const deleteTodoItem = async (supabase: SupabaseClient, todoId: string) =
       }
     } catch (error) {
       console.error('Error updating journal entry content during todo item deletion:', todoId, error);
+      toast.error('Failed to update journal entry after to-do item deletion.');
       // Decide if this error should be propagated or just logged.
       // For now, logging it and not interrupting the todo deletion flow.
     }
@@ -170,7 +191,9 @@ export const deleteTodoItem = async (supabase: SupabaseClient, todoId: string) =
 
   if (deleteError) {
     console.error('Error deleting todo item:', deleteError);
+    toast.error('Failed to delete to-do item.');
     throw deleteError;
   }
+  toast.success('To-do item deleted successfully.');
   return true;
 }; 

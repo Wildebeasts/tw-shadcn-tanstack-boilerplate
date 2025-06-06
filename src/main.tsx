@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter, useNavigate } from "@tanstack/react-router";
 import { ClerkProvider } from '@clerk/clerk-react'
+import { Toaster } from 'sonner';
 
 //theme provider from shared components (e.g. for light/dark mode)
 import { ThemeProvider as ShadThemeProvider } from "@/components/shared/ThemeProvider";
@@ -66,6 +67,7 @@ export function ClerkAndThemeProvider({ children }: { children: React.ReactNode 
 			<ShadThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
 				<SupabaseProvider>
 					{children}
+					<Toaster />
 				</SupabaseProvider>
 			</ShadThemeProvider>
 		</ClerkProvider>

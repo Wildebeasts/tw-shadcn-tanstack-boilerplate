@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Project } from '@/types/supabase';
+import { toast } from 'sonner';
 
 const TABLE_NAME = 'projects';
 
@@ -20,8 +21,10 @@ export const createProject = async (
     .single();
   if (error) {
     console.error('Error creating project:', error.message);
-    return null;
+    toast.error('Failed to create project.');
+    throw error;
   }
+  toast.success('Project created successfully.');
   return data;
 };
 
@@ -41,7 +44,8 @@ export const getProjectsByUserId = async (
     .eq('user_id', userId);
   if (error) {
     console.error('Error fetching projects by user ID:', error.message);
-    return null;
+    toast.error('Failed to fetch projects.');
+    throw error;
   }
   return data;
 };
@@ -64,7 +68,8 @@ export const getProjectById = async (
   if (error) {
     console.error('Error fetching project by ID:', error.message);
     // It's common for .single() to error if no row is found, handle this gracefully or check error.code
-    return null;
+    toast.error('Failed to fetch project.');
+    throw error;
   }
   return data;
 };
@@ -89,8 +94,10 @@ export const updateProject = async (
     .single();
   if (error) {
     console.error('Error updating project:', error.message);
-    return null;
+    toast.error('Failed to update project.');
+    throw error;
   }
+  toast.success('Project updated successfully.');
   return data;
 };
 
@@ -110,7 +117,9 @@ export const deleteProject = async (
     .eq('id', projectId);
   if (error) {
     console.error('Error deleting project:', error.message);
-    return false;
+    toast.error('Failed to delete project.');
+    throw error;
   }
+  toast.success('Project deleted successfully.');
   return true;
 }; 
