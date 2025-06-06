@@ -40,10 +40,26 @@ import { v4 as uuidv4 } from "uuid"; // For unique file names
 import { Alert } from "../editor/alert/alert";
 import { RiAlertFill } from "react-icons/ri";
 import { TodoItem } from "../editor/todo/todoItem"; // Import TodoItem
-import { createTodoItem, updateTodoItem, getTodoItemsByEntryId, deleteTodoItem } from "@/services/todoItemService"; // Import services
+import {
+  createTodoItem,
+  updateTodoItem,
+  getTodoItemsByEntryId,
+  deleteTodoItem,
+} from "@/services/todoItemService"; // Import services
 import { BsCheck2Square } from "react-icons/bs"; // Icon for the slash command
 import MoodSelector from "./MoodSelector";
 import { getProjectsByUserId } from "@/services/projectService"; // Added for project selection
+import { en } from "@blocknote/core/locales";
+import { createGroq } from "@ai-sdk/groq";
+import {
+  AIMenuController,
+  AIToolbarButton,
+  createAIExtension,
+  createBlockNoteAIClient,
+  getAISlashMenuItems,
+} from "@blocknote/xl-ai";
+import { en as aiEn } from "@blocknote/xl-ai/locales";
+import "@blocknote/xl-ai/style.css";
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -72,8 +88,12 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const [initialDiaryContentString, setInitialDiaryContentString] = useState<
     string | undefined
   >(undefined);
-  const [currentSelectedMood, setCurrentSelectedMood] = useState<string | undefined | null>(diary.manual_mood_label);
-  const [initialMoodLabel, setInitialMoodLabel] = useState<string | undefined | null>(diary.manual_mood_label);
+  const [currentSelectedMood, setCurrentSelectedMood] = useState<
+    string | undefined | null
+  >(diary.manual_mood_label);
+  const [initialMoodLabel, setInitialMoodLabel] = useState<
+    string | undefined | null
+  >(diary.manual_mood_label);
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(
@@ -91,8 +111,12 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const [isLoadingTags, setIsLoadingTags] = useState(false);
 
   const [availableProjects, setAvailableProjects] = useState<Project[]>([]); // Added state for projects
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null | undefined>(diary.project_id); // Added state for selected project
-  const [initialProjectId, setInitialProjectId] = useState<string | null | undefined>(diary.project_id); // Added state to track initial project
+  const [selectedProjectId, setSelectedProjectId] = useState<
+    string | null | undefined
+  >(diary.project_id); // Added state for selected project
+  const [initialProjectId, setInitialProjectId] = useState<
+    string | null | undefined
+  >(diary.project_id); // Added state to track initial project
   const [isLoadingProjects, setIsLoadingProjects] = useState(false); // Added loading state for projects
 
   const BUCKET_NAME = "media-attachments";
@@ -157,6 +181,29 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     [supabase, userId, diary?.id, BUCKET_NAME]
   );
 
+  const client = createBlockNoteAIClient({
+    apiKey: "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",
+    baseURL: "https://api.groq.com/openai/v1/chat/completions",
+  });
+
+  const originalGroqModel = createGroq({
+    // call via our proxy client
+    ...client.getProviderSettings("groq"),
+  })("llama-3.3-70b-versatile");
+
+  const groqModel = {
+    ...originalGroqModel,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    doStream: async (params: any) => {
+      const { prompt: messages, ...rest } = params;
+      console.log(
+        "BlockNoteAI prompt to Groq:",
+        JSON.stringify(messages, null, 2)
+      );
+      return originalGroqModel.doStream({ prompt: messages, ...rest });
+    },
+  };
+
   const schema = BlockNoteSchema.create({
     blockSpecs: {
       // Adds all default blocks.
@@ -214,8 +261,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         if (newTodo && newTodo.id) {
           insertOrUpdateBlock(editor, {
             type: "todo",
-            props: { 
-              checked: "false", 
+            props: {
+              checked: "false",
               todoId: newTodo.id,
               priority: "0", // Store priority as string in block props
             },
@@ -229,17 +276,22 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         // Optionally, show a user-facing error message
       }
     },
-    aliases: [
-      "todo",
-      "task",
-      "checklist",
-      "listitem"
-    ],
+    aliases: ["todo", "task", "checklist", "listitem"],
     group: "Basic blocks",
     icon: <BsCheck2Square />,
   });
 
   const editor = useCreateBlockNote({
+    dictionary: {
+      ...en,
+      ai: aiEn, // add default translations for the AI extension
+    },
+    extensions: [
+      createAIExtension({
+        model: groqModel,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    ],
     schema,
     uploadFile: handleFileUploadCallback,
   });
@@ -247,7 +299,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   useEffect(() => {
     const fetchTagsAndProjects = async () => {
       if (!userId || !supabase || !diary.id) return;
-      
+
       // Fetch Tags
       setIsLoadingTags(true);
       try {
@@ -314,7 +366,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     const currentDocString = JSON.stringify(editor.document);
     if (contentStrToStore !== currentDocString) {
       queueMicrotask(() => {
-        if (editor.document) { // ensure editor document is still valid
+        if (editor.document) {
+          // ensure editor document is still valid
           editor.replaceBlocks(editor.document, blocksToLoad);
         }
       });
@@ -408,26 +461,46 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         }
 
         if (currentContentString && diary.id) {
-          const parsedBlocks: Block<typeof schema.blockSchema>[] = JSON.parse(currentContentString);
+          const parsedBlocks: Block<typeof schema.blockSchema>[] =
+            JSON.parse(currentContentString);
 
           // Sync Todo Items
           try {
-            const editorTodoBlocks = parsedBlocks.filter(block => block.type === "todo");
-            const editorTodoItemIds = editorTodoBlocks.map(block => block.props.todoId).filter(id => !!id) as string[];
-            
-            const existingDbTodoItems = await getTodoItemsByEntryId(supabase, diary.id);
-            const existingDbTodoItemIds = existingDbTodoItems.map(item => item.id as string);
+            const editorTodoBlocks = parsedBlocks.filter(
+              (block) => block.type === "todo"
+            );
+            const editorTodoItemIds = editorTodoBlocks
+              .map((block) => block.props.todoId)
+              .filter((id) => !!id) as string[];
+
+            const existingDbTodoItems = await getTodoItemsByEntryId(
+              supabase,
+              diary.id
+            );
+            const existingDbTodoItemIds = existingDbTodoItems.map(
+              (item) => item.id as string
+            );
 
             // 1. Update existing or create new todos based on editor blocks
             for (const block of editorTodoBlocks) {
               if (block.props.todoId) {
-                const blockContentText = block.content && Array.isArray(block.content) ? block.content.map(c => c.type === 'text' ? c.text : '').join('') : '';
-                const dbTodo = existingDbTodoItems.find(item => item.id === block.props.todoId);
+                const blockContentText =
+                  block.content && Array.isArray(block.content)
+                    ? block.content
+                        .map((c) => (c.type === "text" ? c.text : ""))
+                        .join("")
+                    : "";
+                const dbTodo = existingDbTodoItems.find(
+                  (item) => item.id === block.props.todoId
+                );
 
                 if (dbTodo) {
                   const blockIsCompleted = block.props.checked === "true";
-                  const blockPriority = parseInt(block.props.priority || "0", 10); // Get priority from block, default to 0
-                  
+                  const blockPriority = parseInt(
+                    block.props.priority || "0",
+                    10
+                  ); // Get priority from block, default to 0
+
                   const updates: Partial<TodoItemType> = {};
                   let needsUpdate = false;
 
@@ -437,19 +510,28 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                   }
                   if (dbTodo.is_completed !== blockIsCompleted) {
                     updates.is_completed = blockIsCompleted;
-                    updates.completed_at = blockIsCompleted ? new Date().toISOString() : undefined; // Use undefined instead of null
+                    updates.completed_at = blockIsCompleted
+                      ? new Date().toISOString()
+                      : undefined; // Use undefined instead of null
                     needsUpdate = true;
                   }
-                  if (dbTodo.priority !== blockPriority) { // Compare priority
+                  if (dbTodo.priority !== blockPriority) {
+                    // Compare priority
                     updates.priority = blockPriority;
                     needsUpdate = true;
                   }
 
                   if (needsUpdate) {
-                    await updateTodoItem(supabase, block.props.todoId as string, updates);
+                    await updateTodoItem(
+                      supabase,
+                      block.props.todoId as string,
+                      updates
+                    );
                   }
                 } else {
-                  console.warn(`Todo block with ID ${block.props.todoId} found in editor but not in DB. Skipping update.`);
+                  console.warn(
+                    `Todo block with ID ${block.props.todoId} found in editor but not in DB. Skipping update.`
+                  );
                 }
               }
               // If block.props.todoId is missing, it means it wasn't created properly or is a new block not yet saved.
@@ -462,18 +544,22 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                 try {
                   await deleteTodoItem(supabase, dbTodoId);
                 } catch (deleteError) {
-                  console.error(`Failed to delete todo item ${dbTodoId} from database:`, deleteError);
+                  console.error(
+                    `Failed to delete todo item ${dbTodoId} from database:`,
+                    deleteError
+                  );
                 }
               }
             }
-
           } catch (todoSyncError) {
             console.error("Error syncing todo items:", todoSyncError);
           }
-          
+
           // Media Attachments Sync (existing logic)
           try {
-            const currentEditorImageUrls = extractImageUrlsFromBN(parsedBlocks as unknown as Block[]);
+            const currentEditorImageUrls = extractImageUrlsFromBN(
+              parsedBlocks as unknown as Block[]
+            );
 
             const existingAttachments = await getMediaAttachmentsByEntryId(
               supabase,
@@ -498,19 +584,23 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                 if (!currentEditorImageUrls.includes(attachment.file_path)) {
                   try {
                     let relativePathToDelete = "";
-                    if (attachment.file_path.startsWith(bucketBasePublicUrl + "/")) {
+                    if (
+                      attachment.file_path.startsWith(bucketBasePublicUrl + "/")
+                    ) {
                       relativePathToDelete = attachment.file_path.substring(
                         bucketBasePublicUrl.length + 1
                       );
                     } else {
-                      console.warn(`Unexpected file_path format for attachment ID ${attachment.id}: ${attachment.file_path}. Attempting direct use as path.`);
+                      console.warn(
+                        `Unexpected file_path format for attachment ID ${attachment.id}: ${attachment.file_path}. Attempting direct use as path.`
+                      );
                       relativePathToDelete = attachment.file_path;
                     }
-                    
+
                     if (relativePathToDelete) {
-                        await deleteFiles(supabase, BUCKET_NAME, [
-                          relativePathToDelete,
-                        ]);
+                      await deleteFiles(supabase, BUCKET_NAME, [
+                        relativePathToDelete,
+                      ]);
                     }
                     await deleteMediaAttachment(supabase, attachment.id!);
                     console.log(
@@ -598,7 +688,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                     });
                     console.log(`Created attachment for URL: ${imageUrl}`);
                   } else {
-                    console.log(`Skipping non-Supabase storage URL: ${imageUrl}`);
+                    console.log(
+                      `Skipping non-Supabase storage URL: ${imageUrl}`
+                    );
                   }
                 }
               }
@@ -651,8 +743,20 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const debouncedSave = useMemo(
     () =>
       debounce(
-        (newTitle: string, newContentString?: string, newTagIds?: string[], newMood?: string | undefined | null, newProjectId?: string | null | undefined) => {
-          handleSave(newTitle, newContentString, newTagIds, newMood, newProjectId);
+        (
+          newTitle: string,
+          newContentString?: string,
+          newTagIds?: string[],
+          newMood?: string | undefined | null,
+          newProjectId?: string | null | undefined
+        ) => {
+          handleSave(
+            newTitle,
+            newContentString,
+            newTagIds,
+            newMood,
+            newProjectId
+          );
         },
         2000
       ),
@@ -689,9 +793,22 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       );
     }
 
-    if (titleChanged || contentChanged || tagsHaveChangedVsSavedState || moodChanged || projectChanged) { // Added projectChanged to condition
+    if (
+      titleChanged ||
+      contentChanged ||
+      tagsHaveChangedVsSavedState ||
+      moodChanged ||
+      projectChanged
+    ) {
+      // Added projectChanged to condition
       setHasUnsavedChanges(true);
-      debouncedSave(editableTitle, currentEditorContentString, selectedTagIds, currentSelectedMood, selectedProjectId); // Pass selectedProjectId
+      debouncedSave(
+        editableTitle,
+        currentEditorContentString,
+        selectedTagIds,
+        currentSelectedMood,
+        selectedProjectId
+      ); // Pass selectedProjectId
     } else {
       setHasUnsavedChanges(false);
       debouncedSave.cancel();
@@ -809,7 +926,12 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
             />
           </div>
           <div className="mt-3">
-            <h3 className="text-sm font-medium text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>Project</h3>
+            <h3
+              className="text-sm font-medium text-slate-500 mb-1"
+              style={{ fontFamily: "Readex Pro, sans-serif" }}
+            >
+              Project
+            </h3>
             <Select
               allowClear
               style={{ width: "100%" }}
@@ -821,9 +943,12 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                 label: (
                   <div className="flex items-center">
                     {proj.color_hex && (
-                      <span 
-                        className="w-3 h-3 rounded-full mr-2 inline-block" 
-                        style={{ backgroundColor: proj.color_hex, border: '1px solid rgba(0,0,0,0.1)' }}
+                      <span
+                        className="w-3 h-3 rounded-full mr-2 inline-block"
+                        style={{
+                          backgroundColor: proj.color_hex,
+                          border: "1px solid rgba(0,0,0,0.1)",
+                        }}
                       ></span>
                     )}
                     {proj.name}
@@ -835,10 +960,15 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
             />
           </div>
           <div className="mt-3">
-            <h3 className="text-sm font-medium text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>How are you feeling?</h3>
+            <h3
+              className="text-sm font-medium text-slate-500 mb-1"
+              style={{ fontFamily: "Readex Pro, sans-serif" }}
+            >
+              How are you feeling?
+            </h3>
             <MoodSelector
-                selectedMoodValue={currentSelectedMood}
-                onMoodSelect={(moodVal) => setCurrentSelectedMood(moodVal)}
+              selectedMoodValue={currentSelectedMood}
+              onMoodSelect={(moodVal) => setCurrentSelectedMood(moodVal)}
             />
           </div>
           {diary.entry_timestamp && (
@@ -918,6 +1048,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
               }
             }}
           >
+            {/* Add the AI Command menu to the editor */}
+            <AIMenuController />
+
             {/* Replaces the default Formatting Toolbar */}
             <FormattingToolbarController
               formattingToolbar={() => (
@@ -935,7 +1068,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                       isSelected: (block) => block.type === "alert",
                     } satisfies BlockTypeSelectItem,
                   ]}
-                />
+                >
+                  <AIToolbarButton />
+                </FormattingToolbar>
               )}
             />
             {/* Replaces the default Slash Menu. */}
@@ -944,6 +1079,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
               getItems={async (query) => {
                 // Gets all default slash menu items.
                 const defaultItems = getDefaultReactSlashMenuItems(editor);
+                const aiItems = getAISlashMenuItems(editor);
                 // Finds index of last item in "Basic blocks" group.
                 let lastBasicBlockIndex = -1;
                 for (let i = defaultItems.length - 1; i >= 0; i--) {
@@ -967,7 +1103,10 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                 );
 
                 // Returns filtered items based on the query.
-                return filterSuggestionItems(defaultItems, query);
+                return filterSuggestionItems(
+                  [...defaultItems, ...aiItems],
+                  query
+                );
               }}
             />
           </BlockNoteView>
