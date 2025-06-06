@@ -6,7 +6,7 @@ import DiaryCard from '@/components/diary/DiaryCard';
 import DiaryDetailView from '@/components/diary/DiaryDetailView';
 import { JournalEntry, Tag, Project } from '@/types/supabase';
 import { createClerkSupabaseClient } from "@/utils/supabaseClient"; // Added Supabase client creator
-import { useAuth, useUser } from "@clerk/clerk-react"; // MODIFIED: Added useUser from Clerk
+import { useAuth } from "@clerk/clerk-react"; // MODIFIED: Added useUser from Clerk
 import { createJournalEntry, getJournalEntriesByUserId, updateJournalEntry, deleteJournalEntry } from '@/services/journalEntryService'; // Added journal entry services and updateJournalEntry
 import { getTagsByUserId, getEntryTagsByEntryId } from '@/services/tagService'; // Added tag service and getEntryTagsByEntryId
 import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Import project service
@@ -17,8 +17,8 @@ import { useNavigate, useSearch, useRouterState } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react'; // Added Chevron icons
 
 // ADDED: Imports for Realtime components
-import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'; 
-import { RealtimeCursors } from '@/components/realtime-cursors';
+// import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'; 
+// import { RealtimeCursors } from '@/components/realtime-cursors';
 
 // Define a type for your search params. 
 // This should align with your TanStack Router configuration for this route.
@@ -83,7 +83,7 @@ const sortDiariesByEntryTimestamp = (a: JournalEntryWithTags, b: JournalEntryWit
 
 const DiaryPage = () => {
   const { getToken, userId } = useAuth();
-  const { user } = useUser(); // ADDED: useUser hook to get user details
+  // const { user } = useUser(); // ADDED: useUser hook to get user details
   const supabase = useMemo(() => {
     // Only create a new client if getToken is available
     // For server components or environments where getToken might not be immediately ready,
@@ -117,7 +117,7 @@ const DiaryPage = () => {
   const createNewHandledRef = useRef(false); // Ref to track if createNew has been handled
 
   // Determine username: try fullName, then first email, then userId as fallback
-  const usernameForCursors = user?.fullName || user?.primaryEmailAddress?.emailAddress || userId || "Anonymous User";
+  // const usernameForCursors = user?.fullName || user?.primaryEmailAddress?.emailAddress || userId || "Anonymous User";
 
   const handleCreateNew = useCallback(async () => {
     if (!userId || !supabase) {
@@ -215,7 +215,9 @@ const DiaryPage = () => {
           const sortedDiaries = diariesWithTags.sort(sortDiariesByEntryTimestamp);
           setDiaries(sortedDiaries);
 
-          if (sortedDiaries.length > 0 && !selectedDiaryId) {
+          // On desktop, select the first diary if none is selected. On mobile, wait for user selection.
+          const isMobile = window.matchMedia("(max-width: 767px)").matches;
+          if (sortedDiaries.length > 0 && !selectedDiaryId && !isMobile) {
             setSelectedDiaryId(sortedDiaries[0].id!);
           } else if (sortedDiaries.length === 0) {
             setSelectedDiaryId(null);
@@ -409,14 +411,14 @@ const DiaryPage = () => {
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] bg-slate-50 text-foreground"> 
-      <aside className="w-full md:w-1/3 lg:w-1/4 p-4 md:p-6 border-r border-slate-200 overflow-y-auto bg-white">
+      <aside className={`w-full md:w-1/3 lg:w-1/4 p-4 md:p-6 border-r border-slate-200 overflow-y-auto bg-white ${selectedDiaryId ? 'hidden md:block' : 'block'}`}>
         <header className="mb-6">
           <h1 className="text-xl font-normal text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>My diaries</h1>
           
           {/* ADDED: RealtimeAvatarStack */}
-          <div className="my-3">
+          {/* <div className="my-3">
             <RealtimeAvatarStack roomName="diary_collaboration_room" />
-          </div>
+          </div> */}
 
           <button 
             onClick={handleCreateNew}
@@ -613,9 +615,19 @@ const DiaryPage = () => {
         )}
       </aside>
 
-      <main className="flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-[#E4EFE7]/50 rounded-tl-2xl md:rounded-tl-none">
+      <main className={`flex-1 w-full md:w-2/3 lg:w-3/4 p-4 md:p-8 overflow-y-auto bg-[#E4EFE7]/50 rounded-tl-2xl md:rounded-tl-none ${selectedDiaryId ? 'block' : 'hidden md:block'}`}>
         {/* ADDED: RealtimeCursors wrapper */}
-        <RealtimeCursors roomName="diary_collaboration_room" username={usernameForCursors}>
+        {/* <RealtimeCursors roomName="diary_collaboration_room" username={usernameForCursors}> */}
+          {selectedDiaryId && (
+            <button
+              onClick={() => setSelectedDiaryId(null)}
+              className="md:hidden mb-4 flex items-center text-sm font-semibold text-slate-600 hover:text-slate-800"
+              aria-label="Back to diary list"
+            >
+              <ChevronLeft size={18} className="mr-1" />
+              Back to Diary List
+            </button>
+          )}
           {/* Use currentSelectedDiary for the detail view to ensure it shows even if filtered out from the list */}
           {currentSelectedDiary ? (
             <DiaryDetailView 
@@ -674,7 +686,7 @@ const DiaryPage = () => {
               </h2>
             </div>
           )}
-        </RealtimeCursors>
+        {/* </RealtimeCursors> */}
       </main>
     </div>
   );
