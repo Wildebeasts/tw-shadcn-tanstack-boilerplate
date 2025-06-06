@@ -1,4 +1,4 @@
-https://woodpecker.beanjournal.site/api/badges/1/status.svg
+<scheme>://woodpecker.beanjournal.site/api/badges/1/status.svg
 ![repository-open-graph-template(1)](https://github.com/user-attachments/assets/2117493b-d280-41b5-b081-30e94247f52e)
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/1yl5d.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
