@@ -34,7 +34,7 @@ steps:
       - echo "$SSHK" | sudo tee $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy > /dev/null
       - sudo cat $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
       - sudo chmod 700 $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy
-      - sudo ssh-keyscan -H $REMOTE_HOST >> $WOODPECKER_WORKSPACE/.ssh/known_hosts
+      - ssh-keyscan -H $REMOTE_HOST | sudo tee -a $WOODPECKER_WORKSPACE/.ssh/known_hosts > /dev/null
       # Create target directory
       - sudo ssh -i $WOODPECKER_WORKSPACE/.ssh/id_rsa_deploy -o StrictHostKeyChecking=no $REMOTE_USER@$REMOTE_HOST "mkdir -p $REMOTE_TARGET_PATH/Bean-Journal-Web-FE"
       # Copy files using rsync (better than scp for directories)
