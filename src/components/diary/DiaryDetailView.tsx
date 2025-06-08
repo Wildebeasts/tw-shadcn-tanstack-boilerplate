@@ -47,18 +47,6 @@ import DiaryModals from "./detail/DiaryModals";
 import { FacebookProvider, useFacebook } from "react-facebook";
 import { generateJournalImage } from "@/services/imageGenerationService";
 
-interface FacebookApiException {
-  message: string;
-  type: string;
-  code: number;
-  fbtrace_id: string;
-}
-interface FacebookApiResponse {
-  id?: string;
-  post_id?: string;
-  error?: FacebookApiException;
-}
-
 interface DiaryDetailViewProps {
   diary: JournalEntry;
   onUpdateDiary: (updatedEntry: Partial<JournalEntry>) => Promise<void>;
@@ -106,6 +94,14 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
   const [isSharing, setIsSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [isSharePreviewModalVisible, setIsSharePreviewModalVisible] =
+    useState(false);
+  const [sharePreviewImageUrl, setSharePreviewImageUrl] = useState<
+    string | null
+  >(null);
+  const [shareImagePathInStorage, setShareImagePathInStorage] = useState<
+    string | null
+  >(null);
 
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -525,34 +521,37 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
               );
             } else {
               for (const attachment of existingAttachments) {
-                if (!currentEditorImageUrls.includes(attachment.file_path)) {
+                if (
+                  !currentEditorImageUrls.includes(attachment.file_url_cached)
+                ) {
                   try {
-                    let relativePathToDelete = "";
-                    if (
-                      attachment.file_path.startsWith(bucketBasePublicUrl + "/")
-                    ) {
-                      relativePathToDelete = attachment.file_path.substring(
-                        bucketBasePublicUrl.length + 1
-                      );
-                    } else {
-                      console.warn(
-                        `Unexpected file_path format for attachment ID ${attachment.id}: ${attachment.file_path}. Attempting direct use as path.`
-                      );
-                      relativePathToDelete = attachment.file_path;
-                    }
+                    const relativePathToDelete = attachment.file_path;
+
+                    console.log(
+                      `Attempting to delete attachment. DB ID: ${attachment.id}, Storage Path: ${relativePathToDelete}`
+                    );
 
                     if (relativePathToDelete) {
-                      await deleteFiles(supabase, BUCKET_NAME, [
+                      const success = await deleteFiles(supabase, BUCKET_NAME, [
                         relativePathToDelete,
                       ]);
+                      if (success) {
+                        console.log(
+                          `Successfully deleted file from storage: ${relativePathToDelete}`
+                        );
+                      } else {
+                        console.warn(
+                          `Storage deletion call returned false for path: ${relativePathToDelete}. The file may have already been deleted.`
+                        );
+                      }
                     }
                     await deleteMediaAttachment(supabase, attachment.id!);
                     console.log(
-                      `Deleted attachment record for ${attachment.file_path} and attempted to delete file ${relativePathToDelete}`
+                      `Deleted attachment record from database for path: ${attachment.file_url_cached}`
                     );
                   } catch (deleteError) {
                     console.error(
-                      `Error deleting attachment or file for ${attachment.file_path}:`,
+                      `Error deleting attachment or file for ${attachment.file_url_cached}:`,
                       deleteError
                     );
                   }
@@ -562,7 +561,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
               const refreshedExistingAttachments =
                 await getMediaAttachmentsByEntryId(supabase, diary.id);
               const refreshedExistingAttachmentUrls =
-                refreshedExistingAttachments.map((att) => att.file_path);
+                refreshedExistingAttachments.map((att) => att.file_url_cached);
 
               for (const imageUrl of currentEditorImageUrls) {
                 if (!refreshedExistingAttachmentUrls.includes(imageUrl)) {
@@ -623,7 +622,8 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
                     await createMediaAttachment(supabase, {
                       entry_id: diary.id,
                       user_id: userId,
-                      file_path: imageUrl,
+                      file_path: relativeFilePath,
+                      file_url_cached: imageUrl,
                       file_name_original: fileNameOriginal,
                       file_type: "image",
                       mime_type: mimeType,
@@ -797,7 +797,55 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     setIsDeleteConfirmVisible(false);
   };
 
-  const handleShareToFacebook = async () => {
+  const handleCloseSharePreview = async (deleteImage: boolean) => {
+    const pathToDel = shareImagePathInStorage;
+
+    if (deleteImage && pathToDel) {
+      try {
+        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [pathToDel]);
+        console.log("Successfully deleted share image from storage.");
+
+        // Reset state immediately to close modal
+        setIsSharePreviewModalVisible(false);
+        setSharePreviewImageUrl(null);
+        setShareImagePathInStorage(null);
+      } catch (error) {
+        console.error("Failed to delete share image from storage.", error);
+      }
+    }
+  };
+
+  const proceedWithFacebookShare = async () => {
+    if (!sharePreviewImageUrl) {
+      console.error("No image URL to share.");
+      return;
+    }
+
+    const api = await initFacebookSdk();
+    const FB = await api?.getFB();
+
+    if (!FB) {
+      console.error("FB SDK not available");
+      await handleCloseSharePreview(true);
+      return;
+    }
+
+    FB.ui(
+      {
+        method: "share",
+        href: sharePreviewImageUrl,
+        quote: diary.title || "A new entry from my BeanJournal!",
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (response: any) => {
+        console.log("Share response:", response);
+        // After the dialog is closed, delete the image.
+        await handleCloseSharePreview(true);
+      }
+    );
+  };
+
+  const handleGenerateSharePreview = async () => {
     if (isFbSdkLoading) {
       setShareError("Facebook SDK is loading. Please try again in a moment.");
       return;
@@ -814,114 +862,55 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
       setShareError("Failed to initialize Facebook SDK.");
       return;
     }
-    const FB = await api.getFB();
-
-    if (!FB) {
-      console.error("Facebook SDK not loaded yet.");
-      setShareError("Facebook SDK not ready. Please try again in a moment.");
-      return;
-    }
 
     setIsSharing(true);
     setShareError(null);
-    let imagePathInStorage: string | null = null;
+    let imagePath: string | null = null;
 
     try {
-      // 1. Get full tag objects from state
       const tagsForImage = availableTags.filter((tag) =>
         selectedTagIds.includes(tag.id!)
       );
 
-      // 2. Generate image using satori
       const imageDataUri = await generateJournalImage(diary, tagsForImage);
-
-      // 3. Convert data URI to a File for upload
       const imageFile = dataURItoFile(
         imageDataUri,
-        `share-image-${diary.id}.svg`
+        `share-image-${diary.id}.png`
       );
 
-      // 4. Upload to Supabase Storage
-      const uniqueFileName = `${uuidv4()}.svg`;
+      const uniqueFileName = `${uuidv4()}.png`;
       const filePath = `${userId}/${diary.id}/${uniqueFileName}`;
-      imagePathInStorage = filePath;
+      imagePath = filePath;
 
       const { error: uploadError } = await supabase.storage
         .from(SHARE_IMAGE_BUCKET_NAME)
         .upload(filePath, imageFile, {
-          contentType: "image/svg+xml",
+          contentType: "image/png",
           cacheControl: "0",
           upsert: false,
         });
 
       if (uploadError) {
-        console.error("Error uploading share image:", uploadError);
         throw new Error("Failed to upload share image.");
       }
 
-      // 5. Get public URL for the image
       const imageUrl = getPublicUrl(
         supabase,
         SHARE_IMAGE_BUCKET_NAME,
         filePath
       );
-
       if (!imageUrl) {
         throw new Error("Failed to get public URL for share image.");
       }
 
-      const caption = diary.title || "A new entry from my BeanJournal!";
-
-      // 6. Post the photo to the user's profile using FB.api
-      // NOTE: This requires the 'user_photos' permission from the user.
-      // You must request this scope during your Facebook login flow.
-      FB.api(
-        "/me/photos",
-        "post",
-        {
-          url: imageUrl,
-          caption: caption,
-        },
-        (response: FacebookApiResponse) => {
-          if (response && !response.error) {
-            console.log("Successfully posted photo to Facebook:", response);
-          } else {
-            console.error(
-              "Facebook photo post error:",
-              response && response.error
-            );
-            const errorMessage =
-              response?.error?.message ||
-              "Posting photo failed or was cancelled.";
-            setShareError(
-              `${errorMessage} Make sure you have granted the 'user_photos' permission.`
-            );
-          }
-          
-          // 7. Clean up the image from storage
-          if (imagePathInStorage) {
-            deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [
-              imagePathInStorage,
-            ]).then((success) => {
-              if (success) {
-                console.log("Successfully deleted share image from storage.");
-              } else {
-                console.error("Failed to delete share image from storage.");
-              }
-            });
-          }
-        }
-      );
+      setSharePreviewImageUrl(imageUrl);
+      setShareImagePathInStorage(imagePath);
+      setIsSharePreviewModalVisible(true);
     } catch (error) {
-      console.error("Share process error:", error);
       const message = error instanceof Error ? error.message : String(error);
       setShareError(message || "An unexpected error occurred during sharing.");
-      
-      // Cleanup if an error occurred before the dialog was shown
-      if (imagePathInStorage) {
-        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [
-          imagePathInStorage,
-        ]);
+      if (imagePath) {
+        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [imagePath]);
       }
     } finally {
       setIsSharing(false);
@@ -948,7 +937,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
         showDeleteConfirm={showDeleteConfirm}
-        onShareToFacebook={handleShareToFacebook}
+        onShareToFacebook={handleGenerateSharePreview}
         isSharing={isSharing}
       />
 
@@ -978,6 +967,40 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         currentVideoUrl={currentVideoUrl}
         handleVideoModalCancel={handleVideoModalCancel}
       />
+      {isSharePreviewModalVisible && (
+        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center p-4">
+          <div className="relative p-5 border shadow-lg rounded-lg bg-white w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">
+              Share Preview
+            </h3>
+            <div className="flex-grow mb-4 flex items-center justify-center bg-gray-100 rounded-md overflow-hidden">
+              {sharePreviewImageUrl ? (
+                <img
+                  src={sharePreviewImageUrl}
+                  alt="Share preview"
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <div className="text-gray-500">Generating preview...</div>
+              )}
+            </div>
+            <div className="flex justify-end space-x-4 flex-shrink-0">
+              <button
+                onClick={() => handleCloseSharePreview(true)}
+                className="px-5 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={proceedWithFacebookShare}
+                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Share on Facebook
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

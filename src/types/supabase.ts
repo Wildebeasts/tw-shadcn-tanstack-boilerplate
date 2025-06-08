@@ -40,7 +40,8 @@ export interface MediaAttachment {
   id?: string; // UUID PRIMARY KEY DEFAULT gen_random_uuid()
   entry_id: string; // UUID NOT NULL
   user_id: string; // TEXT NOT NULL
-  file_path: string; // TEXT NOT NULL UNIQUE
+  file_path: string; // TEXT NOT NULL UNIQUE -- Path in Supabase Storage
+  file_url_cached: string; // TEXT NOT NULL UNIQUE
   file_name_original?: string; // TEXT
   file_type: string; // TEXT NOT NULL
   mime_type: string; // TEXT NOT NULL
