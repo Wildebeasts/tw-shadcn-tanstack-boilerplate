@@ -251,4 +251,17 @@ export interface Project {
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   // UNIQUE (user_id, name)
+}
+
+export interface FacebookShare {
+  id?: string; // UUID
+  user_id: string; // TEXT
+  journal_entry_id: string; // UUID
+  facebook_post_id?: string; // TEXT
+  preview_image_path: string; // TEXT
+  preview_image_url_cached: string; // TEXT
+  shared_at?: string; // TIMESTAMPTZ
+  share_link_used?: string; // TEXT
+  share_caption?: string; // TEXT
+  share_description?: string; // TEXT
 } 

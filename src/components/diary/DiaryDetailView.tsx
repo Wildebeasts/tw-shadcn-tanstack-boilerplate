@@ -46,6 +46,11 @@ import DiaryEditor from "./detail/DiaryEditor";
 import DiaryModals from "./detail/DiaryModals";
 import { FacebookProvider, useFacebook } from "react-facebook";
 import { generateJournalImage } from "@/services/imageGenerationService";
+import {
+  createFacebookShare,
+  deleteFacebookShare,
+  updateFacebookShare,
+} from "@/services/facebookShareService";
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -99,7 +104,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   const [sharePreviewImageUrl, setSharePreviewImageUrl] = useState<
     string | null
   >(null);
-  const [shareImagePathInStorage, setShareImagePathInStorage] = useState<
+  const [currentShareRecordId, setCurrentShareRecordId] = useState<
     string | null
   >(null);
 
@@ -797,27 +802,28 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     setIsDeleteConfirmVisible(false);
   };
 
-  const handleCloseSharePreview = async (deleteImage: boolean) => {
-    const pathToDel = shareImagePathInStorage;
+  const handleCancelAndCleanupShare = async () => {
+    const recordIdToDel = currentShareRecordId;
 
-    if (deleteImage && pathToDel) {
+    // Reset state immediately for better UX
+    setIsSharePreviewModalVisible(false);
+    setSharePreviewImageUrl(null);
+    setCurrentShareRecordId(null);
+
+    if (recordIdToDel) {
       try {
-        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [pathToDel]);
-        console.log("Successfully deleted share image from storage.");
-
-        // Reset state immediately to close modal
-        setIsSharePreviewModalVisible(false);
-        setSharePreviewImageUrl(null);
-        setShareImagePathInStorage(null);
+        await deleteFacebookShare(supabase, recordIdToDel);
+        console.log("Successfully deleted share record from DB.");
       } catch (error) {
-        console.error("Failed to delete share image from storage.", error);
+        console.error("Failed to delete share record from DB.", error);
       }
     }
   };
 
   const proceedWithFacebookShare = async () => {
-    if (!sharePreviewImageUrl) {
-      console.error("No image URL to share.");
+    if (!sharePreviewImageUrl || !currentShareRecordId) {
+      console.error("No image URL or share record ID to share.");
+      await handleCancelAndCleanupShare();
       return;
     }
 
@@ -826,7 +832,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
     if (!FB) {
       console.error("FB SDK not available");
-      await handleCloseSharePreview(true);
+      await handleCancelAndCleanupShare();
       return;
     }
 
@@ -839,8 +845,23 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (response: any) => {
         console.log("Share response:", response);
-        // After the dialog is closed, delete the image.
-        await handleCloseSharePreview(true);
+        if (response && response.post_id) {
+          try {
+            await updateFacebookShare(supabase, currentShareRecordId, {
+              facebook_post_id: response.post_id,
+            });
+            console.log("Share record updated with post_id.");
+          } catch (error) {
+            console.error("Failed to update share record with post_id", error);
+          }
+          // On success, just close the modal, don't delete the record.
+          setIsSharePreviewModalVisible(false);
+          setSharePreviewImageUrl(null);
+          setCurrentShareRecordId(null);
+        } else {
+          console.log("Share cancelled or failed from FB dialog.");
+          await handleCancelAndCleanupShare();
+        }
       }
     );
   };
@@ -903,14 +924,32 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         throw new Error("Failed to get public URL for share image.");
       }
 
+      // Create the share record in the database first
+      const newShareRecord = await createFacebookShare(supabase, {
+        user_id: userId,
+        journal_entry_id: diary.id!,
+        preview_image_path: filePath,
+        preview_image_url_cached: imageUrl,
+        share_link_used: imageUrl, // Initially same as preview URL
+        share_caption: diary.title || "A new entry from my BeanJournal!",
+      });
+
+      if (!newShareRecord || !newShareRecord.id) {
+        throw new Error("Failed to create share record in database.");
+      }
+
+      // Now set the state to show the modal
+      setCurrentShareRecordId(newShareRecord.id);
       setSharePreviewImageUrl(imageUrl);
-      setShareImagePathInStorage(imagePath);
       setIsSharePreviewModalVisible(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setShareError(message || "An unexpected error occurred during sharing.");
+      // Note: If image upload succeeded but DB record creation failed,
+      // the image will remain in storage as an orphaned file.
+      // This is per the request to remove storage deletion logic.
       if (imagePath) {
-        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [imagePath]);
+        // await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [imagePath]);
       }
     } finally {
       setIsSharing(false);
@@ -986,7 +1025,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
             </div>
             <div className="flex justify-end space-x-4 flex-shrink-0">
               <button
-                onClick={() => handleCloseSharePreview(true)}
+                onClick={handleCancelAndCleanupShare}
                 className="px-5 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
               >
                 Cancel
