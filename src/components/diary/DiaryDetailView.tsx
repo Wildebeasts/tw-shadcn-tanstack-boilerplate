@@ -23,7 +23,6 @@ import {
   BlockNoteSchema,
   defaultBlockSpecs,
   insertOrUpdateBlock,
-  InlineContent,
 } from "@blocknote/core";
 import { v4 as uuidv4 } from "uuid";
 import { Alert } from "../editor/alert/alert";
@@ -39,16 +38,26 @@ import { BsCheck2Square } from "react-icons/bs";
 import { getProjectsByUserId } from "@/services/projectService";
 import { en } from "@blocknote/core/locales";
 import { createGroq } from "@ai-sdk/groq";
-import {
-  createAIExtension,
-  createBlockNoteAIClient,
-} from "@blocknote/xl-ai";
+import { createAIExtension, createBlockNoteAIClient } from "@blocknote/xl-ai";
 import { en as aiEn } from "@blocknote/xl-ai/locales";
 import "@blocknote/xl-ai/style.css";
 import DiaryHeader from "./detail/DiaryHeader";
 import DiaryEditor from "./detail/DiaryEditor";
 import DiaryModals from "./detail/DiaryModals";
 import { FacebookProvider, useFacebook } from "react-facebook";
+import { generateJournalImage } from "@/services/imageGenerationService";
+
+interface FacebookApiException {
+  message: string;
+  type: string;
+  code: number;
+  fbtrace_id: string;
+}
+interface FacebookApiResponse {
+  id?: string;
+  post_id?: string;
+  error?: FacebookApiException;
+}
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -113,6 +122,19 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
   const BUCKET_NAME = "media-attachments";
+  const SHARE_IMAGE_BUCKET_NAME = "shared-previews";
+
+  const dataURItoFile = (dataURI: string, fileName: string): File => {
+    const byteString = atob(dataURI.split(",")[1]);
+    const mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeString });
+    return new File([blob], fileName, { type: mimeString });
+  };
 
   const handleFileUploadCallback = useCallback(
     async (file: File): Promise<string> => {
@@ -329,7 +351,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
     setInitialDiaryContentString(contentStrToStore);
     setCurrentEditorContentString(contentStrToStore);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diary?.id, diary?.content, editor]);
 
   useEffect(() => {
@@ -786,11 +808,11 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
       setShareError("Cannot share: Entry ID is missing.");
       return;
     }
-    
+
     const api = await initFacebookSdk();
     if (!api) {
-        setShareError("Failed to initialize Facebook SDK.");
-        return;
+      setShareError("Failed to initialize Facebook SDK.");
+      return;
     }
     const FB = await api.getFB();
 
@@ -802,95 +824,91 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
     setIsSharing(true);
     setShareError(null);
+    let imagePathInStorage: string | null = null;
 
     try {
-      // 1. Get the current user's session token to pass to the Edge Function
-      // 2. Call your Supabase Edge Function
-      const { data: responseData, error: functionError } =
-        await supabase.functions.invoke("generate-share-image", {
-          body: { journalEntryId: diary.id },
+      // 1. Get full tag objects from state
+      const tagsForImage = availableTags.filter((tag) =>
+        selectedTagIds.includes(tag.id!)
+      );
+
+      // 2. Generate image using satori
+      const imageDataUri = await generateJournalImage(diary, tagsForImage);
+
+      // 3. Convert data URI to a File for upload
+      const imageFile = dataURItoFile(
+        imageDataUri,
+        `share-image-${diary.id}.svg`
+      );
+
+      // 4. Upload to Supabase Storage
+      const uniqueFileName = `${uuidv4()}.svg`;
+      const filePath = `${userId}/${diary.id}/${uniqueFileName}`;
+      imagePathInStorage = filePath;
+
+      const { error: uploadError } = await supabase.storage
+        .from(SHARE_IMAGE_BUCKET_NAME)
+        .upload(filePath, imageFile, {
+          contentType: "image/svg+xml",
+          cacheControl: "0",
+          upsert: false,
         });
 
-      if (functionError) {
-        console.error("Edge Function error:", functionError);
-        throw new Error(
-          functionError.message || "Failed to generate share image."
-        );
-      }
-      if (!responseData || !responseData.imageUrl) {
-        console.error("Invalid response from Edge Function:", responseData);
-        throw new Error("Failed to get image URL from server.");
+      if (uploadError) {
+        console.error("Error uploading share image:", uploadError);
+        throw new Error("Failed to upload share image.");
       }
 
-      const { imageUrl } = responseData;
+      // 5. Get public URL for the image
+      const imageUrl = getPublicUrl(
+        supabase,
+        SHARE_IMAGE_BUCKET_NAME,
+        filePath
+      );
 
-      const extractTextFromContent = (content: string | undefined): string => {
-        if (!content) return "";
-        try {
-          const blocks: PartialBlock[] = JSON.parse(content);
-          let text = "";
-          const traverse = (block: PartialBlock) => {
-            if (block.content) {
-              if (typeof block.content === "string") {
-                text += block.content + " ";
-              } else {
-                // Array of InlineContent
-                for (const item of block.content as InlineContent<
-                  typeof schema.inlineContentSchema,
-                  typeof schema.styleSchema
-                >[]) {
-                  if (item.type === "text") {
-                    text += item.text + " ";
-                  }
-                }
-              }
-            }
-            if (block.children) {
-              for (const child of block.children) {
-                traverse(child);
-              }
-            }
-          };
-          for (const block of blocks) {
-            traverse(block);
-          }
-          return text.trim();
-        } catch (e) {
-          console.error("Failed to parse diary content for description:", e);
-          if (typeof content === "string" && !content.startsWith("[")) {
-            return content;
-          }
-          return "";
-        }
-      };
+      if (!imageUrl) {
+        throw new Error("Failed to get public URL for share image.");
+      }
 
-      const description =
-        extractTextFromContent(diary.content).substring(0, 150) + "...";
+      const caption = diary.title || "A new entry from my BeanJournal!";
 
-      // 3. Use Facebook Feed Dialog
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      FB.ui(
+      // 6. Post the photo to the user's profile using FB.api
+      // NOTE: This requires the 'user_photos' permission from the user.
+      // You must request this scope during your Facebook login flow.
+      FB.api(
+        "/me/photos",
+        "post",
         {
-          method: "feed",
-          link: `https://localhost:5173/journal/diary?entryId=${diary.id}`,
-          picture: imageUrl,
-          name: diary.title || "My BeanJournal Entry",
-          caption: "BeanJournal - Capture Your Thoughts",
-          description: description,
+          url: imageUrl,
+          caption: caption,
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        function (response: any) {
-          if (response && !response.error_message) {
-            console.log("Successfully shared to Facebook:", response);
+        (response: FacebookApiResponse) => {
+          if (response && !response.error) {
+            console.log("Successfully posted photo to Facebook:", response);
           } else {
             console.error(
-              "Facebook share error:",
-              response && response.error_message
+              "Facebook photo post error:",
+              response && response.error
             );
+            const errorMessage =
+              response?.error?.message ||
+              "Posting photo failed or was cancelled.";
             setShareError(
-              (response && response.error_message) ||
-                "Sharing was cancelled or failed."
+              `${errorMessage} Make sure you have granted the 'user_photos' permission.`
             );
+          }
+          
+          // 7. Clean up the image from storage
+          if (imagePathInStorage) {
+            deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [
+              imagePathInStorage,
+            ]).then((success) => {
+              if (success) {
+                console.log("Successfully deleted share image from storage.");
+              } else {
+                console.error("Failed to delete share image from storage.");
+              }
+            });
           }
         }
       );
@@ -898,6 +916,13 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
       console.error("Share process error:", error);
       const message = error instanceof Error ? error.message : String(error);
       setShareError(message || "An unexpected error occurred during sharing.");
+      
+      // Cleanup if an error occurred before the dialog was shown
+      if (imagePathInStorage) {
+        await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [
+          imagePathInStorage,
+        ]);
+      }
     } finally {
       setIsSharing(false);
     }
@@ -964,7 +989,9 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 // environment variables.
 const DiaryDetailView: React.FC<DiaryDetailViewProps> = (props) => {
   return (
-    <FacebookProvider appId={import.meta.env.VITE_FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID"}>
+    <FacebookProvider
+      appId={import.meta.env.VITE_FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID"}
+    >
       <DiaryDetailViewContent {...props} />
     </FacebookProvider>
   );
