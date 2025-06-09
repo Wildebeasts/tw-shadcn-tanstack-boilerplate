@@ -23,25 +23,19 @@ import {
   blockTypeSelectItems,
   FormattingToolbar,
   FormattingToolbarController,
-  getDefaultReactSlashMenuItems,
-  SuggestionMenuController,
   useCreateBlockNote,
-  type DefaultReactSuggestionItem,
 } from "@blocknote/react";
 import {
   PartialBlock,
   Block,
   BlockNoteSchema,
   defaultBlockSpecs,
-  insertOrUpdateBlock,
-  filterSuggestionItems,
 } from "@blocknote/core";
 import { v4 as uuidv4 } from "uuid"; // For unique file names
 import { Alert } from "../editor/alert/alert";
 import { RiAlertFill } from "react-icons/ri";
 import { TodoItem } from "../editor/todo/todoItem"; // Import TodoItem
-import { createTodoItem, updateTodoItem, getTodoItemsByEntryId, deleteTodoItem } from "@/services/todoItemService"; // Import services
-import { BsCheck2Square } from "react-icons/bs"; // Icon for the slash command
+import { updateTodoItem, getTodoItemsByEntryId, deleteTodoItem } from "@/services/todoItemService"; // Import services
 import MoodSelector from "./MoodSelector";
 import { getProjectsByUserId } from "@/services/projectService"; // Added for project selection
 
@@ -166,77 +160,6 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       // Adds the TodoItem block.
       todo: TodoItem,
     },
-  });
-
-  // Slash menu item to insert an Alert block
-  const insertAlert = (editor: typeof schema.BlockNoteEditor) => ({
-    title: "Alert",
-    subtext: "Alert for emphasizing text",
-    onItemClick: () =>
-      // If the block containing the text caret is empty, `insertOrUpdateBlock`
-      // changes its type to the provided block. Otherwise, it inserts the new
-      // block below and moves the text caret to it. We use this function with an
-      // Alert block.
-      insertOrUpdateBlock(editor, {
-        type: "alert",
-      }),
-    aliases: [
-      "alert",
-      "notification",
-      "emphasize",
-      "warning",
-      "error",
-      "info",
-      "success",
-    ],
-    group: "Basic blocks",
-    icon: <RiAlertFill />,
-  });
-
-  // Slash menu item to insert a TodoItem block
-  const insertTodo = (editor: typeof schema.BlockNoteEditor) => ({
-    title: "Todo",
-    subtext: "Track a task with a checkbox.",
-    onItemClick: async () => {
-      if (!diary || !diary.id || !userId || !supabase) {
-        console.error("Cannot create todo: missing diary context.");
-        return;
-      }
-      try {
-        const newTodo = await createTodoItem(supabase, {
-          user_id: userId,
-          entry_id: diary.id,
-          task_description: "", // Use task_description as per your change
-          is_completed: false,
-          priority: 0, // Default to Low priority (numeric 0)
-        });
-
-        if (newTodo && newTodo.id) {
-          insertOrUpdateBlock(editor, {
-            type: "todo",
-            props: { 
-              checked: "false", 
-              todoId: newTodo.id,
-              priority: "0", // Store priority as string in block props
-            },
-          });
-        } else {
-          console.error("Failed to create todo item in database.");
-          // Optionally, show a user-facing error message
-        }
-      } catch (error) {
-        console.error("Error creating todo item:", error);
-        // Optionally, show a user-facing error message
-      }
-    },
-    aliases: [
-      "todo",
-      "task",
-      "checklist",
-      "listitem"
-    ],
-    group: "Basic blocks",
-    icon: <BsCheck2Square />,
   });
 
   const editor = useCreateBlockNote({
@@ -933,38 +856,6 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                   ]}
                 />
               )}
-            />
-            {/* Replaces the default Slash Menu. */}
-            <SuggestionMenuController
-              triggerCharacter={"/"}
-              getItems={async (query) => {
-                // Gets all default slash menu items.
-                const defaultItems = getDefaultReactSlashMenuItems(editor);
-                // Finds index of last item in "Basic blocks" group.
-                let lastBasicBlockIndex = -1;
-                for (let i = defaultItems.length - 1; i >= 0; i--) {
-                  const item: DefaultReactSuggestionItem = defaultItems[i];
-                  if (item.group === "Basic blocks") {
-                    lastBasicBlockIndex = i;
-                    break;
-                  }
-                }
-                // Inserts the Alert item as the last item in the "Basic blocks" group.
-                defaultItems.splice(
-                  lastBasicBlockIndex + 1,
-                  0,
-                  insertAlert(editor)
-                );
-                // Inserts the Todo item after the Alert item.
-                defaultItems.splice(
-                  lastBasicBlockIndex + 2, // +2 because Alert was just added
-                  0,
-                  insertTodo(editor) as DefaultReactSuggestionItem // Cast to satisfy type
-                );
-
-                // Returns filtered items based on the query.
-                return filterSuggestionItems(defaultItems, query);
-              }}
             />
           </BlockNoteView>
         )}
