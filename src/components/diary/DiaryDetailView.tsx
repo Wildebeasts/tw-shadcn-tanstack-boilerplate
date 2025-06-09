@@ -658,7 +658,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg flex flex-col">
+    <div className="bg-white rounded-xl shadow-lg flex flex-col h-full">
       <header className="p-4 md:p-6 flex justify-between items-start border-b border-slate-200">
         <div className="flex-grow mr-4">
           <input

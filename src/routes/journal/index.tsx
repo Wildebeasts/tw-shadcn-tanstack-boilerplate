@@ -334,7 +334,7 @@ function Homepage() {
   return (
     <>
       <style>{animationStyles}</style>
-      <div className="h-[calc(100vh-100px)] overflow-auto px-4 bg-white dark:bg-[#1E1726] border-x-1 dark:border-x-2">
+      <div className="h-full md:h-[calc(100vh-100px)] overflow-auto px-4 bg-white dark:bg-[#1E1726] border-x-1 dark:border-x-2">
         {loadingProfile && (
           <p className="text-center text-gray-500 py-4">Loading profile...</p>
         )}
