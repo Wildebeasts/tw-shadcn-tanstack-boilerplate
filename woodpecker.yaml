@@ -16,7 +16,7 @@ steps:
       - npm -v
       - corepack enable pnpm
       - echo "$ENVI" | sudo tee .env > /dev/null
-      - pnpm install
+      - pnpm install --no-frozen-lockfile
       - pnpm add @mantine/core
       - pnpm add uuid
       - pnpm build
