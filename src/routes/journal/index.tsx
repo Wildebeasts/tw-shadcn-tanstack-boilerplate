@@ -20,6 +20,9 @@ import { useAuth } from "@clerk/clerk-react"; // Kept for userId
 import { useSupabase } from "../../contexts/SupabaseContext"; // Import useSupabase
 import JournalCalendarSection from "../../components/journal/JournalCalendarSection"; // Import JournalCalendarSection
 import StreakManagement from "../../components/journal/StreakManagement"; // Import StreakManagement
+import MobileBlocker from "../../components/journal/MobileBlocker";
+import LandscapeBlocker from "../../components/journal/LandscapeBlocker";
+import { useMediaQuery } from 'react-responsive';
 
 // Update the route path to make it a child of the journal root
 export const Route = createFileRoute("/journal/")({
@@ -27,6 +30,11 @@ export const Route = createFileRoute("/journal/")({
 });
 
 function Homepage() {
+  const isMobile = useMediaQuery({ query: '(max-width: 768px), (max-height: 540px)' });
+  const isLandscape = useMediaQuery({ query: '(orientation: landscape)' });
+  //const [isModalOpen, setModalOpen] = useState(false);
+  const { userId } = useAuth();
+
   const animationStyles = `
     /* Sunny Day Animation */
     @keyframes sun-rays {
@@ -267,7 +275,6 @@ function Homepage() {
     }
     `;
 
-  const { userId } = useAuth(); // Call useAuth at the top level for userId
   const supabase = useSupabase(); // Use the hook to get Supabase client
 
   // const [showDebugButton, setShowDebugButton] = useState(false);  const [debugStreakKey, setDebugStreakKey] = useState(0); // Key to force StreakManagement update
@@ -332,6 +339,10 @@ function Homepage() {
   // const toggleDebugButton = () => {
   //   setShowDebugButton((prev) => !prev);
   // };
+
+  if (isMobile) {
+    return isLandscape ? <LandscapeBlocker /> : <MobileBlocker />;
+  }
 
   return (
     <>

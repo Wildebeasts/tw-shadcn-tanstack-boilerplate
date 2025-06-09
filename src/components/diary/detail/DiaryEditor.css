@@ -1,0 +1,61 @@
+/*
+  This CSS file contains styles for the DiaryEditor component, specifically to improve
+  the mobile experience of the BlockNote slash command menu.
+*/
+
+/* 
+  Targets the suggestion menu rendered by BlockNote.
+  The selector is constructed to be specific enough to override default styles.
+  Mantine often uses a portal for floating elements, which is why `div[data-mantine-portal]` is included.
+  The `.bn-suggestion-menu` class is an assumption based on BlockNote's naming conventions.
+*/
+div[data-mantine-portal] .bn-suggestion-menu {
+  /* Enables vertical scrolling when content overflows. */
+  overflow-y: auto;
+  /* Prevents the main page from scrolling when the menu is scrolled. */
+  overscroll-behavior-y: contain;
+
+  /* Provides a smoother, momentum-based scrolling experience on iOS devices. */
+  -webkit-overflow-scrolling: touch;
+
+  /* 
+    Instructs the browser that touch gestures starting on this element should be treated
+    as vertical panning (scrolling). This is key to preventing the swipe from being 
+    misinterpreted as a click or other gesture that would close the menu.
+  */
+  touch-action: pan-y;
+  
+  /* 
+    Sets a maximum height for the menu. `overflow-y: auto` only works when
+    the element has a constrained height. We use viewport height (vh) units
+    to make it responsive to different screen sizes.
+  */
+  max-height: 50vh;
+
+  /*
+    Prevents text from being selected when the user drags their finger,
+    which can cause the menu to lose focus and close.
+  */
+  -webkit-user-select: none; /* Safari */
+  -ms-user-select: none; /* IE 10+ */
+  user-select: none; /* Standard */
+}
+
+/*
+  Ensures that touch-drags on individual items are also treated as scroll
+  gestures for the container.
+*/
+div[data-mantine-portal] .bn-suggestion-menu-item {
+  touch-action: pan-y;
+}
+
+/*
+  A media query to apply adjustments specifically for smaller screens,
+  following a mobile-first approach.
+*/
+@media (max-width: 768px) {
+  div[data-mantine-portal] .bn-suggestion-menu {
+    /* Reduces the max height on smaller devices to ensure it doesn't take up too much screen real estate. */
+    max-height: 40vh;
+  }
+} 
