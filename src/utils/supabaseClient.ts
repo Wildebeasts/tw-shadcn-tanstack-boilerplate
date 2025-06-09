@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Use Vite specific env vars for client-side accessibility
@@ -49,5 +51,10 @@ export function createClerkSupabaseClient(
         });
       },
     },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    }
   });
 }

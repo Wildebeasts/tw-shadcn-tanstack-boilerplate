@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { JournalEntry, Tag, Project } from "@/types/supabase";
-import { Modal as AntModal, Select } from "antd";
 import debounce from "lodash/debounce";
 import type { TodoItem as TodoItemType } from "@/types/supabase";
 import {
@@ -16,28 +15,46 @@ import {
 } from "@/services/mediaAttachmentService";
 import { getPublicUrl, deleteFiles } from "@/services/storageService";
 import "@blocknote/core/fonts/inter.css";
-import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
-import {
-  BlockTypeSelectItem,
-  blockTypeSelectItems,
-  FormattingToolbar,
-  FormattingToolbarController,
-  useCreateBlockNote,
-} from "@blocknote/react";
+import { useCreateBlockNote } from "@blocknote/react";
 import {
   PartialBlock,
   Block,
   BlockNoteSchema,
   defaultBlockSpecs,
+  insertOrUpdateBlock,
 } from "@blocknote/core";
-import { v4 as uuidv4 } from "uuid"; // For unique file names
+import { v4 as uuidv4 } from "uuid";
 import { Alert } from "../editor/alert/alert";
 import { RiAlertFill } from "react-icons/ri";
-import { TodoItem } from "../editor/todo/todoItem"; // Import TodoItem
-import { updateTodoItem, getTodoItemsByEntryId, deleteTodoItem } from "@/services/todoItemService"; // Import services
-import MoodSelector from "./MoodSelector";
-import { getProjectsByUserId } from "@/services/projectService"; // Added for project selection
+import { TodoItem } from "../editor/todo/todoItem";
+import {
+  createTodoItem,
+  updateTodoItem,
+  getTodoItemsByEntryId,
+  deleteTodoItem,
+} from "@/services/todoItemService";
+import { BsCheck2Square } from "react-icons/bs";
+import { getProjectsByUserId } from "@/services/projectService";
+import { en } from "@blocknote/core/locales";
+import { createGroq } from "@ai-sdk/groq";
+import { createAIExtension, createBlockNoteAIClient } from "@blocknote/xl-ai";
+import { en as aiEn } from "@blocknote/xl-ai/locales";
+import "@blocknote/xl-ai/style.css";
+import DiaryHeader from "./detail/DiaryHeader";
+import DiaryEditor from "./detail/DiaryEditor";
+import DiaryModals from "./detail/DiaryModals";
+import {
+  FacebookProvider,
+  useFacebook,
+  useShare,
+} from "react-facebook";
+import { generateJournalImage } from "@/services/imageGenerationService";
+import {
+  createFacebookShare,
+  deleteFacebookShare,
+  updateFacebookShare,
+} from "@/services/facebookShareService";
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -52,13 +69,14 @@ const defaultInitialBlocks: PartialBlock[] = [
 ];
 const defaultInitialContentString = JSON.stringify(defaultInitialBlocks);
 
-const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
+const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   diary,
   onUpdateDiary,
   onDeleteDiary,
   userId,
   supabase,
 }) => {
+  const { init: initFacebookSdk, isLoading: isFbSdkLoading } = useFacebook();
   const [editableTitle, setEditableTitle] = useState(diary.title || "");
   const [currentEditorContentString, setCurrentEditorContentString] = useState<
     string | undefined
@@ -66,8 +84,12 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const [initialDiaryContentString, setInitialDiaryContentString] = useState<
     string | undefined
   >(undefined);
-  const [currentSelectedMood, setCurrentSelectedMood] = useState<string | undefined | null>(diary.manual_mood_label);
-  const [initialMoodLabel, setInitialMoodLabel] = useState<string | undefined | null>(diary.manual_mood_label);
+  const [currentSelectedMood, setCurrentSelectedMood] = useState<
+    string | undefined | null
+  >(diary.manual_mood_label);
+  const [initialMoodLabel, setInitialMoodLabel] = useState<
+    string | undefined | null
+  >(diary.manual_mood_label);
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(
@@ -79,26 +101,44 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
 
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [isSharePreviewModalVisible, setIsSharePreviewModalVisible] =
+    useState(false);
+  const [sharePreviewImageUrl, setSharePreviewImageUrl] = useState<
+    string | null
+  >(null);
+  const [currentShareRecordId, setCurrentShareRecordId] = useState<
+    string | null
+  >(null);
+
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [initialLoadedTagIds, setInitialLoadedTagIds] = useState<string[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
 
-  const [availableProjects, setAvailableProjects] = useState<Project[]>([]); // Added state for projects
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null | undefined>(diary.project_id); // Added state for selected project
-  const [initialProjectId, setInitialProjectId] = useState<string | null | undefined>(diary.project_id); // Added state to track initial project
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false); // Added loading state for projects
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<
+    string | null | undefined
+  >(diary.project_id);
+  const [initialProjectId, setInitialProjectId] = useState<
+    string | null | undefined
+  >(diary.project_id);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
   const BUCKET_NAME = "media-attachments";
+  const SHARE_IMAGE_BUCKET_NAME = "shared-previews";
 
-  const getContrastColor = (hexcolor?: string): string => {
-    if (!hexcolor) return "#000000";
-    hexcolor = hexcolor.replace("#", "");
-    const r = parseInt(hexcolor.substring(0, 2), 16);
-    const g = parseInt(hexcolor.substring(2, 4), 16);
-    const b = parseInt(hexcolor.substring(4, 6), 16);
-    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    return yiq >= 128 ? "#000000" : "#FFFFFF";
+  const dataURItoFile = (dataURI: string, fileName: string): File => {
+    const byteString = atob(dataURI.split(",")[1]);
+    const mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeString });
+    return new File([blob], fileName, { type: mimeString });
   };
 
   const handleFileUploadCallback = useCallback(
@@ -113,7 +153,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       }
 
       const fileExtension = file.name.split(".").pop();
-      const uniqueFileName = `${uuidv4()}.${fileExtension}`; // Use UUID for unique names
+      const uniqueFileName = `${uuidv4()}.${fileExtension}`;
       const filePath = `${userId}/${diary.id}/${uniqueFileName}`;
 
       const { data, error } = await supabase.storage
@@ -151,18 +191,92 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     [supabase, userId, diary?.id, BUCKET_NAME]
   );
 
+  const client = createBlockNoteAIClient({
+    apiKey: "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",
+    baseURL: "https://api.groq.com/openai/v1/chat/completions",
+  });
+
+  const model = createGroq({
+    ...client.getProviderSettings("groq"),
+  })("llama-3.3-70b-versatile");
+
   const schema = BlockNoteSchema.create({
     blockSpecs: {
-      // Adds all default blocks.
       ...defaultBlockSpecs,
-      // Adds the Alert block.
       alert: Alert,
-      // Adds the TodoItem block.
       todo: TodoItem,
     },
   });
 
+  const insertAlert = (editor: typeof schema.BlockNoteEditor) => ({
+    title: "Alert",
+    subtext: "Alert for emphasizing text",
+    onItemClick: () =>
+      insertOrUpdateBlock(editor, {
+        type: "alert",
+      }),
+    aliases: [
+      "alert",
+      "notification",
+      "emphasize",
+      "warning",
+      "error",
+      "info",
+      "success",
+    ],
+    group: "Basic blocks",
+    icon: <RiAlertFill />,
+  });
+
+  const insertTodo = (editor: typeof schema.BlockNoteEditor) => ({
+    title: "Todo",
+    subtext: "Track a task with a checkbox.",
+    onItemClick: async () => {
+      if (!diary || !diary.id || !userId || !supabase) {
+        console.error("Cannot create todo: missing diary context.");
+        return;
+      }
+      try {
+        const newTodo = await createTodoItem(supabase, {
+          user_id: userId,
+          entry_id: diary.id,
+          task_description: "",
+          is_completed: false,
+          priority: 0,
+        });
+
+        if (newTodo && newTodo.id) {
+          insertOrUpdateBlock(editor, {
+            type: "todo",
+            props: {
+              checked: "false",
+              todoId: newTodo.id,
+              priority: "0",
+            },
+          });
+        } else {
+          console.error("Failed to create todo item in database.");
+        }
+      } catch (error) {
+        console.error("Error creating todo item:", error);
+      }
+    },
+    aliases: ["todo", "task", "checklist", "listitem"],
+    group: "Basic blocks",
+    icon: <BsCheck2Square />,
+  });
+  
   const editor = useCreateBlockNote({
+    dictionary: {
+      ...en,
+      ai: aiEn,
+    },
+    extensions: [
+      createAIExtension({
+        model: model,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    ],
     schema,
     uploadFile: handleFileUploadCallback,
   });
@@ -170,8 +284,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   useEffect(() => {
     const fetchTagsAndProjects = async () => {
       if (!userId || !supabase || !diary.id) return;
-      
-      // Fetch Tags
+
       setIsLoadingTags(true);
       try {
         const userTags = await getTagsByUserId(supabase, userId);
@@ -186,7 +299,6 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         setIsLoadingTags(false);
       }
 
-      // Fetch Projects
       setIsLoadingProjects(true);
       try {
         const projects = await getProjectsByUserId(supabase, userId);
@@ -214,7 +326,6 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           blocksToLoad = parsed;
           contentStrToStore = diary.content;
         } else if (Array.isArray(parsed) && parsed.length === 0) {
-          // Handle empty array as valid empty content
           blocksToLoad = defaultInitialBlocks;
           contentStrToStore = defaultInitialContentString;
         } else {
@@ -236,19 +347,21 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
 
     const currentDocString = JSON.stringify(editor.document);
     if (contentStrToStore !== currentDocString) {
-      editor.replaceBlocks(editor.document, blocksToLoad);
+      queueMicrotask(() => {
+        if (editor.document) {
+          editor.replaceBlocks(editor.document, blocksToLoad);
+        }
+      });
     }
 
     setInitialDiaryContentString(contentStrToStore);
     setCurrentEditorContentString(contentStrToStore);
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diary?.id, diary?.content, editor]);
 
   useEffect(() => {
     setCurrentSelectedMood(diary.manual_mood_label);
     setInitialMoodLabel(diary.manual_mood_label);
-    // Sync selected project ID when diary changes
     setSelectedProjectId(diary.project_id);
     setInitialProjectId(diary.project_id);
   }, [diary.manual_mood_label, diary.id, diary.project_id]);
@@ -256,28 +369,6 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const handleVideoModalCancel = () => {
     setIsVideoModalVisible(false);
     setCurrentVideoUrl(null);
-  };
-
-  const formatDate = (isoStringInput: string | Date) => {
-    if (!isoStringInput) return "No date";
-    const date =
-      typeof isoStringInput === "string"
-        ? new Date(isoStringInput)
-        : isoStringInput;
-    try {
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return typeof isoStringInput === "string"
-        ? isoStringInput
-        : isoStringInput.toISOString();
-    }
   };
 
   const extractImageUrlsFromBN = (blocks: Block[]): string[] => {
@@ -299,7 +390,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       currentContentString?: string,
       tagIdsForSave?: string[],
       moodToSave?: string | undefined | null,
-      projectToSaveId?: string | null | undefined // Added project ID to save parameters
+      projectToSaveId?: string | null | undefined
     ) => {
       if (!diary.id || !userId || !supabase) {
         console.error("Cannot save, diary ID or user ID is missing.");
@@ -327,26 +418,44 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         }
 
         if (currentContentString && diary.id) {
-          const parsedBlocks: Block<typeof schema.blockSchema>[] = JSON.parse(currentContentString);
+          const parsedBlocks: Block<typeof schema.blockSchema>[] =
+            JSON.parse(currentContentString);
 
-          // Sync Todo Items
           try {
-            const editorTodoBlocks = parsedBlocks.filter(block => block.type === "todo");
-            const editorTodoItemIds = editorTodoBlocks.map(block => block.props.todoId).filter(id => !!id) as string[];
-            
-            const existingDbTodoItems = await getTodoItemsByEntryId(supabase, diary.id);
-            const existingDbTodoItemIds = existingDbTodoItems.map(item => item.id as string);
+            const editorTodoBlocks = parsedBlocks.filter(
+              (block) => block.type === "todo"
+            );
+            const editorTodoItemIds = editorTodoBlocks
+              .map((block) => block.props.todoId)
+              .filter((id) => !!id) as string[];
 
-            // 1. Update existing or create new todos based on editor blocks
+            const existingDbTodoItems = await getTodoItemsByEntryId(
+              supabase,
+              diary.id
+            );
+            const existingDbTodoItemIds = existingDbTodoItems.map(
+              (item) => item.id as string
+            );
+
             for (const block of editorTodoBlocks) {
               if (block.props.todoId) {
-                const blockContentText = block.content && Array.isArray(block.content) ? block.content.map(c => c.type === 'text' ? c.text : '').join('') : '';
-                const dbTodo = existingDbTodoItems.find(item => item.id === block.props.todoId);
+                const blockContentText =
+                  block.content && Array.isArray(block.content)
+                    ? block.content
+                        .map((c) => (c.type === "text" ? c.text : ""))
+                        .join("")
+                    : "";
+                const dbTodo = existingDbTodoItems.find(
+                  (item) => item.id === block.props.todoId
+                );
 
                 if (dbTodo) {
                   const blockIsCompleted = block.props.checked === "true";
-                  const blockPriority = parseInt(block.props.priority || "0", 10); // Get priority from block, default to 0
-                  
+                  const blockPriority = parseInt(
+                    block.props.priority || "0",
+                    10
+                  );
+
                   const updates: Partial<TodoItemType> = {};
                   let needsUpdate = false;
 
@@ -356,43 +465,51 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                   }
                   if (dbTodo.is_completed !== blockIsCompleted) {
                     updates.is_completed = blockIsCompleted;
-                    updates.completed_at = blockIsCompleted ? new Date().toISOString() : undefined; // Use undefined instead of null
+                    updates.completed_at = blockIsCompleted
+                      ? new Date().toISOString()
+                      : undefined;
                     needsUpdate = true;
                   }
-                  if (dbTodo.priority !== blockPriority) { // Compare priority
+                  if (dbTodo.priority !== blockPriority) {
                     updates.priority = blockPriority;
                     needsUpdate = true;
                   }
 
                   if (needsUpdate) {
-                    await updateTodoItem(supabase, block.props.todoId as string, updates);
+                    await updateTodoItem(
+                      supabase,
+                      block.props.todoId as string,
+                      updates
+                    );
                   }
                 } else {
-                  console.warn(`Todo block with ID ${block.props.todoId} found in editor but not in DB. Skipping update.`);
+                  console.warn(
+                    `Todo block with ID ${block.props.todoId} found in editor but not in DB. Skipping update.`
+                  );
                 }
               }
-              // If block.props.todoId is missing, it means it wasn't created properly or is a new block not yet saved.
-              // The slash command should ensure todoId is set after creation.
             }
 
-            // 2. Delete todos from DB if they are no longer in the editor
             for (const dbTodoId of existingDbTodoItemIds) {
               if (!editorTodoItemIds.includes(dbTodoId)) {
                 try {
                   await deleteTodoItem(supabase, dbTodoId);
                 } catch (deleteError) {
-                  console.error(`Failed to delete todo item ${dbTodoId} from database:`, deleteError);
+                  console.error(
+                    `Failed to delete todo item ${dbTodoId} from database:`,
+                    deleteError
+                  );
                 }
               }
             }
-
           } catch (todoSyncError) {
             console.error("Error syncing todo items:", todoSyncError);
           }
-          
-          // Media Attachments Sync (existing logic)
+
           try {
-            const currentEditorImageUrls = extractImageUrlsFromBN(parsedBlocks as unknown as Block[]);
+            const currentEditorImageUrls = extractImageUrlsFromBN(
+              parsedBlocks as unknown as Block[]
+            );
 
             const existingAttachments = await getMediaAttachmentsByEntryId(
               supabase,
@@ -412,43 +529,48 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                 "Could not determine bucket base public URL. Skipping media sync."
               );
             } else {
-              // 1. Delete attachments and files no longer in the editor content
               for (const attachment of existingAttachments) {
-                if (!currentEditorImageUrls.includes(attachment.file_path)) {
+                if (
+                  !currentEditorImageUrls.includes(attachment.file_url_cached)
+                ) {
                   try {
-                    let relativePathToDelete = "";
-                    if (attachment.file_path.startsWith(bucketBasePublicUrl + "/")) {
-                      relativePathToDelete = attachment.file_path.substring(
-                        bucketBasePublicUrl.length + 1
-                      );
-                    } else {
-                      console.warn(`Unexpected file_path format for attachment ID ${attachment.id}: ${attachment.file_path}. Attempting direct use as path.`);
-                      relativePathToDelete = attachment.file_path;
-                    }
-                    
+                    const relativePathToDelete = attachment.file_path;
+
+                    console.log(
+                      `Attempting to delete attachment. DB ID: ${attachment.id}, Storage Path: ${relativePathToDelete}`
+                    );
+
                     if (relativePathToDelete) {
-                        await deleteFiles(supabase, BUCKET_NAME, [
-                          relativePathToDelete,
-                        ]);
+                      const success = await deleteFiles(supabase, BUCKET_NAME, [
+                        relativePathToDelete,
+                      ]);
+                      if (success) {
+                        console.log(
+                          `Successfully deleted file from storage: ${relativePathToDelete}`
+                        );
+                      } else {
+                        console.warn(
+                          `Storage deletion call returned false for path: ${relativePathToDelete}. The file may have already been deleted.`
+                        );
+                      }
                     }
                     await deleteMediaAttachment(supabase, attachment.id!);
                     console.log(
-                      `Deleted attachment record for ${attachment.file_path} and attempted to delete file ${relativePathToDelete}`
+                      `Deleted attachment record from database for path: ${attachment.file_url_cached}`
                     );
                   } catch (deleteError) {
                     console.error(
-                      `Error deleting attachment or file for ${attachment.file_path}:`,
+                      `Error deleting attachment or file for ${attachment.file_url_cached}:`,
                       deleteError
                     );
                   }
                 }
               }
 
-              // 2. Add new attachments for images newly added to the editor
               const refreshedExistingAttachments =
                 await getMediaAttachmentsByEntryId(supabase, diary.id);
               const refreshedExistingAttachmentUrls =
-                refreshedExistingAttachments.map((att) => att.file_path);
+                refreshedExistingAttachments.map((att) => att.file_url_cached);
 
               for (const imageUrl of currentEditorImageUrls) {
                 if (!refreshedExistingAttachmentUrls.includes(imageUrl)) {
@@ -509,7 +631,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                     await createMediaAttachment(supabase, {
                       entry_id: diary.id,
                       user_id: userId,
-                      file_path: imageUrl,
+                      file_path: relativeFilePath,
+                      file_url_cached: imageUrl,
                       file_name_original: fileNameOriginal,
                       file_type: "image",
                       mime_type: mimeType,
@@ -517,7 +640,9 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
                     });
                     console.log(`Created attachment for URL: ${imageUrl}`);
                   } else {
-                    console.log(`Skipping non-Supabase storage URL: ${imageUrl}`);
+                    console.log(
+                      `Skipping non-Supabase storage URL: ${imageUrl}`
+                    );
                   }
                 }
               }
@@ -536,7 +661,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           is_draft: false,
           updated_at: new Date().toISOString(),
           manual_mood_label: moodToSave === null ? undefined : moodToSave,
-          project_id: projectToSaveId === null ? undefined : projectToSaveId, // Add project_id to updates
+          project_id: projectToSaveId == null ? null : projectToSaveId,
         };
         await onUpdateDiary(coreUpdates);
 
@@ -546,7 +671,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
           setInitialDiaryContentString(currentContentString);
         }
         setInitialMoodLabel(moodToSave);
-        setInitialProjectId(projectToSaveId); // Update initial project ID after save
+        setInitialProjectId(projectToSaveId);
         setHasUnsavedChanges(false);
       } catch (error) {
         console.error("Error saving diary:", error);
@@ -570,8 +695,20 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   const debouncedSave = useMemo(
     () =>
       debounce(
-        (newTitle: string, newContentString?: string, newTagIds?: string[], newMood?: string | undefined | null, newProjectId?: string | null | undefined) => {
-          handleSave(newTitle, newContentString, newTagIds, newMood, newProjectId);
+        (
+          newTitle: string,
+          newContentString?: string,
+          newTagIds?: string[],
+          newMood?: string | undefined | null,
+          newProjectId?: string | null | undefined
+        ) => {
+          handleSave(
+            newTitle,
+            newContentString,
+            newTagIds,
+            newMood,
+            newProjectId
+          );
         },
         2000
       ),
@@ -595,7 +732,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       currentEditorContentString !== initialDiaryContentString;
 
     const moodChanged = currentSelectedMood !== initialMoodLabel;
-    const projectChanged = selectedProjectId !== initialProjectId; // Check if project changed
+    const projectChanged = selectedProjectId !== initialProjectId;
 
     let tagsHaveChangedVsSavedState = false;
     if (selectedTagIds.length !== initialLoadedTagIds.length) {
@@ -608,9 +745,21 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       );
     }
 
-    if (titleChanged || contentChanged || tagsHaveChangedVsSavedState || moodChanged || projectChanged) { // Added projectChanged to condition
+    if (
+      titleChanged ||
+      contentChanged ||
+      tagsHaveChangedVsSavedState ||
+      moodChanged ||
+      projectChanged
+    ) {
       setHasUnsavedChanges(true);
-      debouncedSave(editableTitle, currentEditorContentString, selectedTagIds, currentSelectedMood, selectedProjectId); // Pass selectedProjectId
+      debouncedSave(
+        editableTitle,
+        currentEditorContentString,
+        selectedTagIds,
+        currentSelectedMood,
+        selectedProjectId
+      );
     } else {
       setHasUnsavedChanges(false);
       debouncedSave.cancel();
@@ -629,8 +778,8 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     debouncedSave,
     currentSelectedMood,
     initialMoodLabel,
-    selectedProjectId, // Added selectedProjectId
-    initialProjectId, // Added initialProjectId
+    selectedProjectId,
+    initialProjectId,
   ]);
 
   const showDeleteConfirm = () => {
@@ -657,245 +806,296 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     setIsDeleteConfirmVisible(false);
   };
 
+  const handleCancelAndCleanupShare = async () => {
+    const recordIdToDel = currentShareRecordId;
+
+    // Reset state immediately for better UX
+    setIsSharePreviewModalVisible(false);
+    setSharePreviewImageUrl(null);
+    setCurrentShareRecordId(null);
+
+    if (recordIdToDel) {
+      try {
+        await deleteFacebookShare(supabase, recordIdToDel);
+        console.log("Successfully deleted share record from DB.");
+      } catch (error) {
+        console.error("Failed to delete share record from DB.", error);
+      }
+    }
+  };
+
+  const proceedWithShareGeneration = useCallback(async () => {
+    if (!diary.id || !userId || !supabase) {
+      console.error("Cannot generate share, missing context.");
+      setShareError("An unexpected error occurred. Missing context.");
+      return;
+    }
+
+    setIsSharing(true);
+    setShareError(null);
+
+    try {
+      const tagsForImage = availableTags.filter((tag) =>
+        selectedTagIds.includes(tag.id!)
+      );
+
+      const imageDataUri = await generateJournalImage(diary, tagsForImage);
+      const imageFile = dataURItoFile(
+        imageDataUri,
+        `share-image-${diary.id}.png`
+      );
+
+      const uniqueFileName = `${uuidv4()}.png`;
+      const filePath = `${userId}/${diary.id}/${uniqueFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(SHARE_IMAGE_BUCKET_NAME)
+        .upload(filePath, imageFile, {
+          contentType: "image/png",
+          cacheControl: "0",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error("Failed to upload share image.");
+      }
+
+      const imageUrl = getPublicUrl(
+        supabase,
+        SHARE_IMAGE_BUCKET_NAME,
+        filePath
+      );
+      if (!imageUrl) {
+        throw new Error("Failed to get public URL for share image.");
+      }
+
+      const newShareRecord = await createFacebookShare(supabase, {
+        user_id: userId,
+        journal_entry_id: diary.id!,
+        preview_image_path: filePath,
+        preview_image_url_cached: imageUrl,
+        share_link_used: imageUrl,
+        share_caption: diary.title || "A new entry from my BeanJournal!",
+      });
+
+      if (!newShareRecord || !newShareRecord.id) {
+        throw new Error("Failed to create share record in database.");
+      }
+
+      setCurrentShareRecordId(newShareRecord.id);
+      setSharePreviewImageUrl(imageUrl);
+      setIsSharePreviewModalVisible(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setShareError(message || "An unexpected error occurred during sharing.");
+    } finally {
+      setIsSharing(false);
+    }
+  }, [
+    diary,
+    userId,
+    supabase,
+    availableTags,
+    selectedTagIds,
+    SHARE_IMAGE_BUCKET_NAME,
+  ]);
+
+  const handleGenerateSharePreview = useCallback(async () => {
+    if (isFbSdkLoading) {
+      setShareError("Facebook SDK is loading. Please try again in a moment.");
+      return;
+    }
+
+    if (!diary.id) {
+      console.error("Journal Entry ID is missing.");
+      setShareError("Cannot share: Entry ID is missing.");
+      return;
+    }
+
+    const api = await initFacebookSdk();
+    if (!api) {
+      setShareError("Failed to initialize Facebook SDK.");
+      return;
+    }
+
+    try {
+      const response = await api.getLoginStatus();
+      if (response.status === "connected") {
+        await proceedWithShareGeneration();
+      } else {
+        const loginResponse = await api.login({
+          scope: "public_profile",
+        });
+        if (loginResponse.status === "connected") {
+          await proceedWithShareGeneration();
+        } else {
+          setShareError(
+            "Facebook login is required to share. Please try again."
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Facebook login or status check failed:", error);
+      setShareError("Failed to connect to Facebook. Please try again.");
+    }
+  }, [
+    isFbSdkLoading,
+    diary.id,
+    initFacebookSdk,
+    proceedWithShareGeneration,
+    setShareError,
+  ]);
+
+  const { share, isLoading } = useShare();
+  const handleShareToFacebook = async () => {
+    try {
+      const response = (await share({
+        href: sharePreviewImageUrl!,
+        display: "iframe",
+      })) as { post_id?: string } | null;
+
+      // The share dialog on desktop can return an empty object on success,
+      // while on mobile it might return a post_id. On cancellation, it
+      // often returns null. So, we'll treat any object response as a success.
+      if (response) {
+        if (response.post_id) {
+          console.log("Successfully shared with post_id:", response.post_id);
+          if (currentShareRecordId) {
+            try {
+              await updateFacebookShare(supabase, currentShareRecordId, {
+                facebook_post_id: response.post_id,
+              });
+              console.log("Share record updated with post_id.");
+            } catch (error) {
+              console.error(
+                "Failed to update share record with post_id",
+                error
+              );
+            }
+          }
+        } else {
+          console.log(
+            "Share dialog closed. Assuming success without a post_id."
+          );
+        }
+
+        // On any success, close the modal and reset state.
+        setIsSharePreviewModalVisible(false);
+        setSharePreviewImageUrl(null);
+        setCurrentShareRecordId(null);
+      } else {
+        // This case handles cancellation from the Facebook dialog (response is null).
+        console.log("Share cancelled from FB dialog.");
+        // We leave the modal open, allowing the user to either try sharing again
+        // or to click our "Cancel" button, which cleans up the share record.
+      }
+    } catch (error) {
+      console.error("An error occurred during the share process:", error);
+      setShareError("An error occurred during sharing. Please try again.");
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-lg flex flex-col h-full">
-      <header className="p-4 md:p-6 flex justify-between items-start border-b border-slate-200">
-        <div className="flex-grow mr-4">
-          <input
-            type="text"
-            value={editableTitle}
-            onChange={(e) => setEditableTitle(e.target.value)}
-            placeholder="Diary Title"
-            className="text-2xl md:text-3xl font-semibold text-[#667760] leading-tight w-full border-0 focus:ring-0 p-0 bg-transparent focus:outline-none"
-            style={{ fontFamily: "Readex Pro, sans-serif" }}
-          />
-          <div className="mt-2">
-            <Select
-              mode="multiple"
-              allowClear
-              style={{ width: "100%" }}
-              placeholder="Select tags"
-              value={selectedTagIds}
-              onChange={setSelectedTagIds}
-              loading={isLoadingTags}
-              options={availableTags.map((tag) => ({
-                label: (
-                  <span
-                    style={{
-                      backgroundColor: tag.color_hex || "#E9E9E9",
-                      color: getContrastColor(tag.color_hex || "#E9E9E9"),
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      border: `1px solid ${tag.color_hex ? getContrastColor(tag.color_hex) + "20" : "#00000020"}`,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ),
-                value: tag.id as string,
-              }))}
-              optionFilterProp="label"
-              tagRender={(props) => {
-                const { value, closable, onClose } = props;
-                const tag = availableTags.find((t) => t.id === value);
-                return (
-                  <span
-                    style={{
-                      backgroundColor: tag?.color_hex || "#E9E9E9",
-                      color: getContrastColor(tag?.color_hex || "#E9E9E9"),
-                      margin: "2px",
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      fontSize: "12px",
-                      border: `1px solid ${tag?.color_hex ? getContrastColor(tag.color_hex) + "20" : "#00000020"}`,
-                    }}
-                  >
-                    {tag?.name || value}
-                    {closable && (
-                      <span
-                        onClick={onClose}
-                        style={{ cursor: "pointer", marginLeft: "5px" }}
-                      >
-                        ×
-                      </span>
-                    )}
-                  </span>
-                );
-              }}
-            />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-sm font-medium text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>Project</h3>
-            <Select
-              allowClear
-              style={{ width: "100%" }}
-              placeholder="Assign to a project (optional)"
-              value={selectedProjectId === undefined ? null : selectedProjectId} // Handle undefined for Select value
-              onChange={(value) => setSelectedProjectId(value)}
-              loading={isLoadingProjects}
-              options={availableProjects.map((proj) => ({
-                label: (
-                  <div className="flex items-center">
-                    {proj.color_hex && (
-                      <span 
-                        className="w-3 h-3 rounded-full mr-2 inline-block" 
-                        style={{ backgroundColor: proj.color_hex, border: '1px solid rgba(0,0,0,0.1)' }}
-                      ></span>
-                    )}
-                    {proj.name}
-                  </div>
-                ),
-                value: proj.id as string,
-              }))}
-              optionFilterProp="label" // Assuming you want to filter by project name in the label
-            />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-sm font-medium text-slate-500 mb-1" style={{ fontFamily: 'Readex Pro, sans-serif' }}>How are you feeling?</h3>
-            <MoodSelector
-                selectedMoodValue={currentSelectedMood}
-                onMoodSelect={(moodVal) => setCurrentSelectedMood(moodVal)}
-            />
-          </div>
-          {diary.entry_timestamp && (
-            <p
-              className="text-xs text-slate-400 mt-1"
-              style={{ fontFamily: "Readex Pro, sans-serif" }}
-            >
-              Created: {formatDate(diary.entry_timestamp)}
-              {lastSaved && (
-                <span className="ml-2 text-green-600">
-                  | Last saved: {formatDate(lastSaved)}
-                </span>
-              )}
-              {isSaving && (
-                <span className="ml-2 text-slate-500 flex items-center">
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-500"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Saving...
-                </span>
-              )}
-              {!isSaving && hasUnsavedChanges && (
-                <span className="ml-2 text-orange-500">Unsaved changes</span>
-              )}
-            </p>
-          )}
-        </div>
-        <div className="flex space-x-1.5 flex-shrink-0">
-          <button
-            title="Delete Diary"
-            onClick={showDeleteConfirm}
-            className="p-2 rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
-        </div>
-      </header>
+    <div className="bg-white rounded-xl shadow-lg flex flex-col">
+      <DiaryHeader
+        diary={diary}
+        editableTitle={editableTitle}
+        setEditableTitle={setEditableTitle}
+        selectedTagIds={selectedTagIds}
+        setSelectedTagIds={setSelectedTagIds}
+        availableTags={availableTags}
+        isLoadingTags={isLoadingTags}
+        selectedProjectId={selectedProjectId}
+        setSelectedProjectId={setSelectedProjectId}
+        availableProjects={availableProjects}
+        isLoadingProjects={isLoadingProjects}
+        currentSelectedMood={currentSelectedMood}
+        setCurrentSelectedMood={setCurrentSelectedMood}
+        lastSaved={lastSaved}
+        isSaving={isSaving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        showDeleteConfirm={showDeleteConfirm}
+        onShareToFacebook={handleGenerateSharePreview}
+        isSharing={isSharing}
+      />
 
-      <div className="flex-grow p-4 md:p-6">
-        {editor && (
-          <BlockNoteView
-            editor={editor}
-            theme="light"
-            onChange={() => {
-              if (editor) {
-                setCurrentEditorContentString(JSON.stringify(editor.document));
-              }
-            }}
-          >
-            {/* Replaces the default Formatting Toolbar */}
-            <FormattingToolbarController
-              formattingToolbar={() => (
-                // Uses the default Formatting Toolbar.
-                <FormattingToolbar
-                  // Sets the items in the Block Type Select.
-                  blockTypeSelectItems={[
-                    // Gets the default Block Type Select items.
-                    ...blockTypeSelectItems(editor.dictionary),
-                    // Adds an item for the Alert block.
-                    {
-                      name: "Alert",
-                      type: "alert",
-                      icon: RiAlertFill,
-                      isSelected: (block) => block.type === "alert",
-                    } satisfies BlockTypeSelectItem,
-                  ]}
-                />
-              )}
-            />
-          </BlockNoteView>
-        )}
-      </div>
-
-      {currentVideoUrl && (
-        <AntModal
-          open={isVideoModalVisible}
-          title="Video Preview"
-          footer={null}
-          onCancel={handleVideoModalCancel}
-          destroyOnClose
-          centered
-          width="80vw"
-          styles={{ body: { padding: 0, lineHeight: 0 } }}
+      {shareError && (
+        <div
+          className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mx-4 my-2"
+          role="alert"
         >
-          <video
-            src={currentVideoUrl}
-            controls
-            autoPlay
-            className="w-full h-auto max-h-[80vh] object-contain"
-          />
-        </AntModal>
+          <p className="font-bold">Sharing Error</p>
+          <p>{shareError}</p>
+        </div>
       )}
 
-      <AntModal
-        title="Confirm Deletion"
-        open={isDeleteConfirmVisible}
-        onOk={handleDeleteConfirmOk}
-        onCancel={handleDeleteConfirmCancel}
-        okText="Delete"
-        okButtonProps={{ danger: true }}
-        cancelText="Cancel"
-      >
-        <p>
-          Are you sure you want to delete this diary entry titled "{diary.title}
-          "? This action cannot be undone.
-        </p>
-      </AntModal>
+      <DiaryEditor
+        editor={editor}
+        setCurrentEditorContentString={setCurrentEditorContentString}
+        insertAlert={insertAlert}
+        insertTodo={insertTodo}
+      />
+
+      <DiaryModals
+        isDeleteConfirmVisible={isDeleteConfirmVisible}
+        handleDeleteConfirmOk={handleDeleteConfirmOk}
+        handleDeleteConfirmCancel={handleDeleteConfirmCancel}
+        diaryTitle={diary.title || ""}
+        isVideoModalVisible={isVideoModalVisible}
+        currentVideoUrl={currentVideoUrl}
+        handleVideoModalCancel={handleVideoModalCancel}
+      />
+      {isSharePreviewModalVisible && (
+        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center p-4">
+          <div className="relative p-5 border shadow-lg rounded-lg bg-white w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">
+              Share Preview
+            </h3>
+            <div className="flex-grow mb-4 flex items-center justify-center bg-gray-100 rounded-md overflow-hidden">
+              {sharePreviewImageUrl ? (
+                <img
+                  src={sharePreviewImageUrl}
+                  alt="Share preview"
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <div className="text-gray-500">Generating preview...</div>
+              )}
+            </div>
+            <div className="flex justify-end space-x-4 flex-shrink-0">
+              <button
+                onClick={handleCancelAndCleanupShare}
+                className="px-5 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleShareToFacebook}
+                disabled={isLoading}
+                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                {isLoading ? "Sharing..." : "Share to Facebook"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+};
+
+// NOTE: The main logic has been moved to DiaryDetailViewContent above.
+// This allows us to wrap the component with FacebookProvider and use the
+// useFacebook hook inside DiaryDetailViewContent.
+// You will need to set up a Facebook App and add the App ID to your
+// environment variables.
+const DiaryDetailView: React.FC<DiaryDetailViewProps> = (props) => {
+  return (
+    <FacebookProvider
+      appId={import.meta.env.VITE_FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID"}
+    >
+      <DiaryDetailViewContent {...props} />
+    </FacebookProvider>
   );
 };
 

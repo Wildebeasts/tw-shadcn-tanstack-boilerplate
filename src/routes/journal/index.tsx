@@ -4,7 +4,7 @@ import "@fontsource/readex-pro/500.css"; // Medium weight
 import "@fontsource/readex-pro/600.css"; // Medium weight
 // import { CalendarIcon, ClockIcon } from "lucide-react"; // Assuming lucide-react for icons - Removed unused import
 import "react-day-picker/dist/style.css"; // Import default styles (we'll override)
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 // import beanLogo from "@/images/logo_bean_journal.png"; // No longer needed here
 import HeaderCard from "@/components/journal/HeaderCard";
 import FloatingActionButton from "@/components/journal/FloatingActionButton";
@@ -15,8 +15,9 @@ import TagSection from "../../components/journal/TagSection"; // Import TagSecti
 import { JournalEntry } from "../../types/supabase"; // Import JournalEntry interface
 import { getJournalEntriesByUserId } from "../../services/journalEntryService"; // Import journal entry services
 import { getProfileByUserId } from "../../services/profileService"; // Import profile services
-import { createClerkSupabaseClient } from "../../utils/supabaseClient"; // Import Supabase client creator
-import { useAuth } from "@clerk/clerk-react";
+// import { createClerkSupabaseClient } from "../../utils/supabaseClient"; // No longer needed here
+import { useAuth } from "@clerk/clerk-react"; // Kept for userId
+import { useSupabase } from "../../contexts/SupabaseContext"; // Import useSupabase
 import JournalCalendarSection from "../../components/journal/JournalCalendarSection"; // Import JournalCalendarSection
 import StreakManagement from "../../components/journal/StreakManagement"; // Import StreakManagement
 
@@ -266,10 +267,8 @@ function Homepage() {
     }
     `;
 
-  const { getToken, userId } = useAuth(); // Call useAuth at the top level
-
-  // Memoize the Supabase client instance
-  const supabase = useMemo(() => createClerkSupabaseClient(getToken), [getToken]);
+  const { userId } = useAuth(); // Call useAuth at the top level for userId
+  const supabase = useSupabase(); // Use the hook to get Supabase client
 
   // const [showDebugButton, setShowDebugButton] = useState(false);  const [debugStreakKey, setDebugStreakKey] = useState(0); // Key to force StreakManagement update
 
@@ -283,10 +282,13 @@ function Homepage() {
   const [loadingJournalEntries, setLoadingJournalEntries] = useState(false);
   const [journalEntryError, setJournalEntryError] = useState<string | null>(null);
 
+  // State for the StreakManagement modal in this specific page instance
+  const [showStreakModalHomepage, setShowStreakModalHomepage] = useState(false);
+
   // Fetch profile on component mount
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!userId) return;
+      if (!userId || !supabase) return; // Check for supabase client
       setLoadingProfile(true);
       setProfileError(null);
       try {
@@ -304,7 +306,7 @@ function Homepage() {
   // Fetch journal entries on component mount
   useEffect(() => {
     const fetchJournalEntries = async () => {
-      if (!userId) return;
+      if (!userId || !supabase) return; // Check for supabase client
       setLoadingJournalEntries(true);
       setJournalEntryError(null);
       try {
@@ -341,7 +343,7 @@ function Homepage() {
         {profileError && (
           <p className="text-center text-red-500 py-4">{profileError}</p>
         )}
-        {!loadingProfile && !profileError && userProfile && (
+        {!loadingProfile && !profileError && userProfile && supabase && (
           <HeaderCard journalEntries={journalEntries} userProfile={userProfile} />
         )}
         {/* Render TagSection if supabase and userId are available */} 
@@ -353,6 +355,8 @@ function Homepage() {
                 journalEntries={journalEntries} 
                 loadingJournalEntries={loadingJournalEntries}
                 journalEntryError={journalEntryError}
+                // Supabase client will be implicitly available to services if they are refactored or if this component passes it down
+                // For now, assuming services called within JournalCalendarSection will need to be adapted or receive the client
             />
         )}
 
@@ -370,6 +374,8 @@ function Homepage() {
                 userProfile={userProfile} 
                 journalEntries={journalEntries} // Pass journal entries
                 // debugStreakKey={debugStreakKey}   // Pass debug key
+                externallyTriggeredOpen={showStreakModalHomepage} // Added prop
+                onClose={() => setShowStreakModalHomepage(false)} // Added prop
             />
         )}
         <FloatingActionButton />

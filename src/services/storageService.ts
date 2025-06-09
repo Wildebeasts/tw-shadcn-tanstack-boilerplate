@@ -65,6 +65,10 @@ export const deleteFiles = async (
   bucketName: string,
   filePaths: string[]
 ) => {
+  console.log(
+    `[storageService] Attempting to delete files from bucket: ${bucketName}`,
+    filePaths
+  );
   const { data, error } = await supabase.storage
     .from(bucketName)
     .remove(filePaths);

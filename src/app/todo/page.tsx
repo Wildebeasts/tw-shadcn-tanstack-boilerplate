@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,15 +12,14 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  Paperclip,
-  Tag,
+  // Paperclip,
+  // Tag,
   ChevronDown,
   Check,
   X,
 } from "lucide-react";
-import { useClerk, useSession } from "@clerk/clerk-react";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClerkSupabaseClient } from "@/utils/supabaseClient";
+import { useClerk } from "@clerk/clerk-react";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import type { TodoItem } from "@/types/supabase";
 import {
   getTodoItemsByUserId,
@@ -33,7 +32,7 @@ const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const TodoPage = () => {
   const { user } = useClerk();
-  const { session } = useSession();
+  const supabase = useSupabase();
 
   const [tasks, setTasks] = useState<TodoItem[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
@@ -43,17 +42,10 @@ const TodoPage = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
-  const activeSupabaseClient: SupabaseClient | null = useMemo(() => {
-    if (session) {
-      return createClerkSupabaseClient(() => session.getToken());
-    }
-    return null;
-  }, [session]);
-
   useEffect(() => {
-    if (user?.id && activeSupabaseClient) {
+    if (user?.id && supabase) {
       setIsLoading(true);
-      getTodoItemsByUserId(activeSupabaseClient, user.id)
+      getTodoItemsByUserId(supabase, user.id)
         .then((data) => {
           setTasks(data || []);
         })
@@ -65,7 +57,7 @@ const TodoPage = () => {
           setIsLoading(false);
         });
     }
-  }, [user?.id, activeSupabaseClient]);
+  }, [user?.id, supabase]);
 
   const primaryButtonBg = "bg-[#DAE6D4]";
   const primaryButtonHoverBg = "hover:bg-[#c9d9c3]"; // A slightly darker shade
@@ -105,9 +97,9 @@ const TodoPage = () => {
   };
 
   const handleAddTask = async () => {
-    if (newTaskText.trim() === "" || !user?.id || !activeSupabaseClient) return;
+    if (newTaskText.trim() === "" || !user?.id || !supabase) return;
     try {
-      const newItem = await createTodoItem(activeSupabaseClient, {
+      const newItem = await createTodoItem(supabase, {
         user_id: user.id,
         task_description: newTaskText,
         is_completed: false,
@@ -125,12 +117,12 @@ const TodoPage = () => {
   };
 
   const handleUpdateTaskPriority = async (taskId: string, priority: number) => {
-    if (!user?.id || !activeSupabaseClient) return;
+    if (!user?.id || !supabase) return;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
     try {
-      const updatedTask = await updateTodoItem(activeSupabaseClient, taskId, { priority });
+      const updatedTask = await updateTodoItem(supabase, taskId, { priority });
       if (updatedTask) {
         setTasks((prevTasks) =>
           prevTasks.map((t) => (t.id === taskId ? updatedTask : t))
@@ -152,9 +144,9 @@ const TodoPage = () => {
   };
 
   const saveEdit = async (taskId: string) => {
-    if (!user?.id || !activeSupabaseClient || editText.trim() === "") return;
+    if (!user?.id || !supabase || editText.trim() === "") return;
     try {
-      const updatedTask = await updateTodoItem(activeSupabaseClient, taskId, {
+      const updatedTask = await updateTodoItem(supabase, taskId, {
         task_description: editText,
       });
       if (updatedTask) {
@@ -169,12 +161,12 @@ const TodoPage = () => {
   };
 
   const toggleTaskCompletion = async (taskId: string) => {
-    if (!user?.id || !activeSupabaseClient) return;
+    if (!user?.id || !supabase) return;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
     try {
-      const updatedTask = await updateTodoItem(activeSupabaseClient, taskId, {
+      const updatedTask = await updateTodoItem(supabase, taskId, {
         is_completed: !task.is_completed,
         completed_at: !task.is_completed ? new Date().toISOString() : undefined,
       });
@@ -189,9 +181,9 @@ const TodoPage = () => {
   };
 
   const removeTask = async (taskId: string) => {
-    if (!user?.id || !activeSupabaseClient) return;
+    if (!user?.id || !supabase) return;
     try {
-      await deleteTodoItem(activeSupabaseClient, taskId);
+      await deleteTodoItem(supabase, taskId);
       setTasks((prevTasks) => prevTasks.filter((task) => task.id !== taskId));
     } catch (error) {
       console.error("Error deleting todo item:", error);
@@ -212,7 +204,7 @@ const TodoPage = () => {
   };
   const calendarDays = getDaysArrayForMonth();
 
-  if (!user && !session) {
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black">
         Please log in to view your ToDo list.
@@ -220,10 +212,10 @@ const TodoPage = () => {
     );
   }
 
-  if (!activeSupabaseClient && session) {
+  if (!supabase && user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black">
-        Initializing...
+        Initializing Supabase or Supabase configuration error...
       </div>
     );
   }
@@ -268,14 +260,14 @@ const TodoPage = () => {
                 value={newTaskText}
                 onChange={(e) => setNewTaskText(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleAddTask()}
-                disabled={isLoading || !activeSupabaseClient}
+                disabled={isLoading || !supabase}
               />
               <div className="relative">
                 <select
                   value={newTaskPriority}
                   onChange={(e) => setNewTaskPriority(Number(e.target.value))}
                   className={`p-2 border-gray-300 dark:border-slate-600 rounded-md text-sm focus:ring-2 ${primaryButtonFocusRing} focus:border-transparent appearance-none ${getPriorityStyles(newTaskPriority).selectBg} ${getPriorityStyles(newTaskPriority).selectText}`}
-                  disabled={isLoading || !activeSupabaseClient}
+                  disabled={isLoading || !supabase}
                 >
                   <option value={0} className={getPriorityStyles(0).optionClass}>Low</option>
                   <option value={1} className={getPriorityStyles(1).optionClass}>Medium</option>
@@ -283,7 +275,7 @@ const TodoPage = () => {
                 </select>
                 <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               </div>
-              <Button onClick={handleAddTask} className={`${primaryButtonBg} ${primaryButtonHoverBg} ${primaryButtonText} rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${primaryButtonFocusRing} transition-colors text-sm px-4 py-2`} disabled={isLoading || !activeSupabaseClient}>
+              <Button onClick={handleAddTask} className={`${primaryButtonBg} ${primaryButtonHoverBg} ${primaryButtonText} rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${primaryButtonFocusRing} transition-colors text-sm px-4 py-2`} disabled={isLoading || !supabase}>
                 Add Task
               </Button>
             </div>
@@ -311,7 +303,7 @@ const TodoPage = () => {
                         checked={task.is_completed}
                         onCheckedChange={() => toggleTaskCompletion(task.id!)}
                         className={`mt-1 border-[#A9C4A0] dark:border-[#8aab81] data-[state=checked]:${primaryButtonBg} data-[state=checked]:${primaryButtonText} dark:data-[state=checked]:bg-[#A9C4A0] dark:data-[state=checked]:text-black`}
-                        disabled={!activeSupabaseClient || isEditing}
+                        disabled={!supabase || isEditing}
                       />
                       <div className="flex-grow">
                         {isEditing ? (
@@ -384,7 +376,7 @@ const TodoPage = () => {
                                   value={task.priority ?? 0}
                                   onChange={(e) => handleUpdateTaskPriority(task.id!, Number(e.target.value))}
                                   className={`p-1 border-gray-300 dark:border-slate-600 rounded-md text-xs focus:ring-2 ${primaryButtonFocusRing} focus:border-transparent appearance-none w-24 text-center ${getPriorityStyles(task.priority ?? 0).selectBg} ${getPriorityStyles(task.priority ?? 0).selectText}`}
-                                  disabled={!activeSupabaseClient}
+                                  disabled={!supabase}
                               >
                                   <option value={0} className={getPriorityStyles(0).optionClass}>Low</option>
                                   <option value={1} className={getPriorityStyles(1).optionClass}>Medium</option>
@@ -393,10 +385,10 @@ const TodoPage = () => {
                               <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                           </div>
                           <div className="flex items-center space-x-0.5 opacity-70 hover:opacity-100 transition-opacity">
-                              <Button variant="ghost" size="icon" className="w-7 h-7 text-gray-500 hover:text-blue-500 dark:hover:text-blue-400" onClick={() => startEdit(task)} disabled={!activeSupabaseClient}>
+                              <Button variant="ghost" size="icon" className="w-7 h-7 text-gray-500 hover:text-blue-500 dark:hover:text-blue-400" onClick={() => startEdit(task)} disabled={!supabase}>
                                   <Edit3 size={14} />
                               </Button>
-                              <Button variant="ghost" size="icon" className="w-7 h-7 text-gray-500 hover:text-red-500 dark:hover:text-red-400" onClick={() => removeTask(task.id!)} disabled={!activeSupabaseClient}>
+                              <Button variant="ghost" size="icon" className="w-7 h-7 text-gray-500 hover:text-red-500 dark:hover:text-red-400" onClick={() => removeTask(task.id!)} disabled={!supabase}>
                                   <Trash2 size={14} />
                               </Button>
                           </div>
@@ -425,7 +417,7 @@ const TodoPage = () => {
                             checked={task.is_completed}
                             onCheckedChange={() => toggleTaskCompletion(task.id!)}
                             className={`mt-1 border-[#A9C4A0] dark:border-[#8aab81] data-[state=checked]:${primaryButtonBg} data-[state=checked]:${primaryButtonText} dark:data-[state=checked]:bg-[#A9C4A0] dark:data-[state=checked]:text-black`}
-                            disabled={!activeSupabaseClient}
+                            disabled={!supabase}
                         />
                         <div className="flex-grow">
                             <label
@@ -445,7 +437,7 @@ const TodoPage = () => {
                                 <span className={`${priorityStyle.textColor} opacity-80`}>{priorityStyle.label}</span>
                             </div>
                         </div>
-                        <Button variant="ghost" size="icon" className="w-8 h-8 text-gray-500 hover:text-red-500 dark:hover:text-red-400" onClick={() => removeTask(task.id!)} disabled={!activeSupabaseClient}>
+                        <Button variant="ghost" size="icon" className="w-8 h-8 text-gray-500 hover:text-red-500 dark:hover:text-red-400" onClick={() => removeTask(task.id!)} disabled={!supabase}>
                             <Trash2 size={16} />
                         </Button>
                         </li>
@@ -494,15 +486,15 @@ const TodoPage = () => {
                 ))}
               </div>
             </div>
-            <div className="bg-white/70 dark:bg-slate-800/70 p-4 rounded-xl shadow-lg">
+            {/* <div className="bg-white/70 dark:bg-slate-800/70 p-4 rounded-xl shadow-lg">
                 <h4 className={`text-lg font-semibold mb-3 ${primaryButtonText} dark:text-gray-200`}>Quick Actions</h4>
-                <Button variant="outline" className={`w-full justify-start mb-2 border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!activeSupabaseClient}>
+                <Button variant="outline" className={`w-full justify-start mb-2 border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!supabase}>
                     <Paperclip size={16} className="mr-2"/> Attach File to Task
                 </Button>
-                <Button variant="outline" className={`w-full justify-start border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!activeSupabaseClient}>
+                <Button variant="outline" className={`w-full justify-start border-gray-300 dark:border-slate-600 hover:border-[#A9C4A0] dark:hover:border-[#8aab81] hover:${primaryButtonText} dark:hover:text-gray-100 focus:ring-2 ${primaryButtonFocusRing}`} disabled={!supabase}>
                     <Tag size={16} className="mr-2"/> Manage Tags
                 </Button>
-            </div>
+            </div> */}
           </div>
         </div>
       </main>

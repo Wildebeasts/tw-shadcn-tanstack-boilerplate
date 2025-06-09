@@ -33,14 +33,15 @@ export interface JournalEntry {
   ocr_processed_text?: string; // TEXT
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
-  project_id?: string; // UUID NULL
+  project_id?: string | null; // UUID NULL
 }
 
 export interface MediaAttachment {
   id?: string; // UUID PRIMARY KEY DEFAULT gen_random_uuid()
   entry_id: string; // UUID NOT NULL
   user_id: string; // TEXT NOT NULL
-  file_path: string; // TEXT NOT NULL UNIQUE
+  file_path: string; // TEXT NOT NULL UNIQUE -- Path in Supabase Storage
+  file_url_cached: string; // TEXT NOT NULL UNIQUE
   file_name_original?: string; // TEXT
   file_type: string; // TEXT NOT NULL
   mime_type: string; // TEXT NOT NULL
@@ -250,4 +251,17 @@ export interface Project {
   created_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   updated_at?: string; // TIMESTAMPTZ DEFAULT NOW()
   // UNIQUE (user_id, name)
+}
+
+export interface FacebookShare {
+  id?: string; // UUID
+  user_id: string; // TEXT
+  journal_entry_id: string; // UUID
+  facebook_post_id?: string; // TEXT
+  preview_image_path: string; // TEXT
+  preview_image_url_cached: string; // TEXT
+  shared_at?: string; // TIMESTAMPTZ
+  share_link_used?: string; // TEXT
+  share_caption?: string; // TEXT
+  share_description?: string; // TEXT
 } 

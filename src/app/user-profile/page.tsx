@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import {
@@ -14,14 +14,13 @@ import {
   SquareUserRound,
   TrendingUp,
 } from "lucide-react";
-import { useClerk, useSession } from "@clerk/clerk-react";
+import { useClerk } from "@clerk/clerk-react";
 import ActivityCalendar from "@/components/ui/ActivityCalendar";
 import { getProfileByUserId } from "@/services/profileService";
 import { getJournalEntriesByUserId } from "@/services/journalEntryService";
 import { getTagsForEntry } from "@/services/tagService";
 import type { Profile, JournalEntry, Tag } from "@/types/supabase";
-import { createClerkSupabaseClient } from "@/utils/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { Link } from "@tanstack/react-router";
 import PhotoGallery from "@/components/PhotoGallery";
 import { moodOptions, type MoodOption } from "@/components/diary/MoodSelector";
@@ -208,7 +207,7 @@ const getDatePartsInTimezone = (
 
 const UserProfilePage = () => {
   const { user } = useClerk();
-  const { session } = useSession();
+  const supabase = useSupabase();
   const [averageColor, setAverageColor] = useState<string>(defaultCoverBg);
   const [profileData, setProfileData] = useState<Profile | null>(null);
   const [latestDiary, setLatestDiary] = useState<JournalEntry | null>(null);
@@ -223,16 +222,9 @@ const UserProfilePage = () => {
   const [activeTab, setActiveTab] = useState<"overview" | "photos">("overview");
   const [dailyMoodSummary, setDailyMoodSummary] = useState<DailyMoodDaySummary[]>([]);
 
-  const activeSupabaseClient: SupabaseClient | null = useMemo(() => {
-    if (session) {
-      return createClerkSupabaseClient(() => session.getToken());
-    }
-    return null;
-  }, [session]);
-
   useEffect(() => {
-    if (user?.id && activeSupabaseClient) {
-      getProfileByUserId(activeSupabaseClient, user.id)
+    if (user?.id && supabase) {
+      getProfileByUserId(supabase, user.id)
         .then((data: Profile | null) => {
           setProfileData(data);
         })
@@ -240,7 +232,7 @@ const UserProfilePage = () => {
           console.error("Error fetching profile:", error)
         );
 
-      getJournalEntriesByUserId(activeSupabaseClient, user.id)
+      getJournalEntriesByUserId(supabase, user.id)
         .then(async (data: JournalEntry[] | null) => {
           if (data && data.length > 0) {
             setUserJournalEntries(data);
@@ -251,10 +243,10 @@ const UserProfilePage = () => {
             setReadableDiaryContent(parsedContent.textContent);
             setLatestDiaryImageUrl(parsedContent.imageUrl);
 
-            if (diaryEntry.id && activeSupabaseClient) {
+            if (diaryEntry.id && supabase) {
               try {
                 const tags = await getTagsForEntry(
-                  activeSupabaseClient,
+                  supabase,
                   diaryEntry.id
                 );
                 setLatestDiaryTags(tags);
@@ -276,7 +268,7 @@ const UserProfilePage = () => {
           setUserJournalEntries([]);
         });
     }
-  }, [user?.id, activeSupabaseClient]);
+  }, [user?.id, supabase]);
 
   useEffect(() => {
     const today = new Date();
@@ -452,15 +444,15 @@ const UserProfilePage = () => {
     );
   }
 
-  if (!activeSupabaseClient) {
+  if (!supabase && user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black">
-        Initializing...
+        Initializing Supabase or Supabase configuration error...
       </div>
     );
   }
 
-  if (!profileData && user) {
+  if (!profileData && user && supabase) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black">
         Loading profile...
@@ -486,7 +478,7 @@ const UserProfilePage = () => {
   const currentStreak = profileData?.current_journal_streak || 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-800 dark:via-gray-900 dark:to-black text-[#2F2569] dark:text-gray-200">
+    <div className="min-h-screen bg-gradient-to-b from-[#E4EFE7] to-white dark:from-gray-800 dark:via-gray-900 dark:to-black text-[#2F2569] dark:text-gray-200">
       <div className="overflow-hidden">
         <div
           className={`relative h-48 md:h-64 ${!coverPhotoUrl ? "" : "bg-cover bg-center"}`}
@@ -905,8 +897,8 @@ const UserProfilePage = () => {
                 </div>
               </div>
             )}
-            {activeTab === "photos" && activeSupabaseClient && user?.id && (
-              <PhotoGallery supabase={activeSupabaseClient} userId={user.id} />
+            {activeTab === "photos" && supabase && user?.id && (
+              <PhotoGallery supabase={supabase} userId={user.id} />
             )}
           </div>
         </div>
