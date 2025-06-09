@@ -265,7 +265,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     group: "Basic blocks",
     icon: <BsCheck2Square />,
   });
-
+  
   const editor = useCreateBlockNote({
     dictionary: {
       ...en,
