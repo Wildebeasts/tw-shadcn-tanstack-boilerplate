@@ -44,7 +44,11 @@ import "@blocknote/xl-ai/style.css";
 import DiaryHeader from "./detail/DiaryHeader";
 import DiaryEditor from "./detail/DiaryEditor";
 import DiaryModals from "./detail/DiaryModals";
-import { FacebookProvider, useFacebook } from "react-facebook";
+import {
+  FacebookProvider,
+  useFacebook,
+  useShare,
+} from "react-facebook";
 import { generateJournalImage } from "@/services/imageGenerationService";
 import {
   createFacebookShare,
@@ -820,73 +824,15 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     }
   };
 
-  const proceedWithFacebookShare = async () => {
-    if (!sharePreviewImageUrl || !currentShareRecordId) {
-      console.error("No image URL or share record ID to share.");
-      await handleCancelAndCleanupShare();
-      return;
-    }
-
-    const api = await initFacebookSdk();
-    const FB = await api?.getFB();
-
-    if (!FB) {
-      console.error("FB SDK not available");
-      await handleCancelAndCleanupShare();
-      return;
-    }
-
-    FB.ui(
-      {
-        method: "share",
-        href: sharePreviewImageUrl,
-        quote: diary.title || "A new entry from my BeanJournal!",
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (response: any) => {
-        console.log("Share response:", response);
-        if (response && response.post_id) {
-          try {
-            await updateFacebookShare(supabase, currentShareRecordId, {
-              facebook_post_id: response.post_id,
-            });
-            console.log("Share record updated with post_id.");
-          } catch (error) {
-            console.error("Failed to update share record with post_id", error);
-          }
-          // On success, just close the modal, don't delete the record.
-          setIsSharePreviewModalVisible(false);
-          setSharePreviewImageUrl(null);
-          setCurrentShareRecordId(null);
-        } else {
-          console.log("Share cancelled or failed from FB dialog.");
-          await handleCancelAndCleanupShare();
-        }
-      }
-    );
-  };
-
-  const handleGenerateSharePreview = async () => {
-    if (isFbSdkLoading) {
-      setShareError("Facebook SDK is loading. Please try again in a moment.");
-      return;
-    }
-
-    if (!diary.id) {
-      console.error("Journal Entry ID is missing.");
-      setShareError("Cannot share: Entry ID is missing.");
-      return;
-    }
-
-    const api = await initFacebookSdk();
-    if (!api) {
-      setShareError("Failed to initialize Facebook SDK.");
+  const proceedWithShareGeneration = useCallback(async () => {
+    if (!diary.id || !userId || !supabase) {
+      console.error("Cannot generate share, missing context.");
+      setShareError("An unexpected error occurred. Missing context.");
       return;
     }
 
     setIsSharing(true);
     setShareError(null);
-    let imagePath: string | null = null;
 
     try {
       const tagsForImage = availableTags.filter((tag) =>
@@ -901,7 +847,6 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
       const uniqueFileName = `${uuidv4()}.png`;
       const filePath = `${userId}/${diary.id}/${uniqueFileName}`;
-      imagePath = filePath;
 
       const { error: uploadError } = await supabase.storage
         .from(SHARE_IMAGE_BUCKET_NAME)
@@ -924,13 +869,12 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         throw new Error("Failed to get public URL for share image.");
       }
 
-      // Create the share record in the database first
       const newShareRecord = await createFacebookShare(supabase, {
         user_id: userId,
         journal_entry_id: diary.id!,
         preview_image_path: filePath,
         preview_image_url_cached: imageUrl,
-        share_link_used: imageUrl, // Initially same as preview URL
+        share_link_used: imageUrl,
         share_caption: diary.title || "A new entry from my BeanJournal!",
       });
 
@@ -938,21 +882,116 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         throw new Error("Failed to create share record in database.");
       }
 
-      // Now set the state to show the modal
       setCurrentShareRecordId(newShareRecord.id);
       setSharePreviewImageUrl(imageUrl);
       setIsSharePreviewModalVisible(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setShareError(message || "An unexpected error occurred during sharing.");
-      // Note: If image upload succeeded but DB record creation failed,
-      // the image will remain in storage as an orphaned file.
-      // This is per the request to remove storage deletion logic.
-      if (imagePath) {
-        // await deleteFiles(supabase, SHARE_IMAGE_BUCKET_NAME, [imagePath]);
-      }
     } finally {
       setIsSharing(false);
+    }
+  }, [
+    diary,
+    userId,
+    supabase,
+    availableTags,
+    selectedTagIds,
+    SHARE_IMAGE_BUCKET_NAME,
+  ]);
+
+  const handleGenerateSharePreview = useCallback(async () => {
+    if (isFbSdkLoading) {
+      setShareError("Facebook SDK is loading. Please try again in a moment.");
+      return;
+    }
+
+    if (!diary.id) {
+      console.error("Journal Entry ID is missing.");
+      setShareError("Cannot share: Entry ID is missing.");
+      return;
+    }
+
+    const api = await initFacebookSdk();
+    if (!api) {
+      setShareError("Failed to initialize Facebook SDK.");
+      return;
+    }
+
+    try {
+      const response = await api.getLoginStatus();
+      if (response.status === "connected") {
+        await proceedWithShareGeneration();
+      } else {
+        const loginResponse = await api.login({
+          scope: "public_profile",
+        });
+        if (loginResponse.status === "connected") {
+          await proceedWithShareGeneration();
+        } else {
+          setShareError(
+            "Facebook login is required to share. Please try again."
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Facebook login or status check failed:", error);
+      setShareError("Failed to connect to Facebook. Please try again.");
+    }
+  }, [
+    isFbSdkLoading,
+    diary.id,
+    initFacebookSdk,
+    proceedWithShareGeneration,
+    setShareError,
+  ]);
+
+  const { share, isLoading } = useShare();
+  const handleShareToFacebook = async () => {
+    try {
+      const response = (await share({
+        href: sharePreviewImageUrl!,
+        display: "iframe",
+      })) as { post_id?: string } | null;
+
+      // The share dialog on desktop can return an empty object on success,
+      // while on mobile it might return a post_id. On cancellation, it
+      // often returns null. So, we'll treat any object response as a success.
+      if (response) {
+        if (response.post_id) {
+          console.log("Successfully shared with post_id:", response.post_id);
+          if (currentShareRecordId) {
+            try {
+              await updateFacebookShare(supabase, currentShareRecordId, {
+                facebook_post_id: response.post_id,
+              });
+              console.log("Share record updated with post_id.");
+            } catch (error) {
+              console.error(
+                "Failed to update share record with post_id",
+                error
+              );
+            }
+          }
+        } else {
+          console.log(
+            "Share dialog closed. Assuming success without a post_id."
+          );
+        }
+
+        // On any success, close the modal and reset state.
+        setIsSharePreviewModalVisible(false);
+        setSharePreviewImageUrl(null);
+        setCurrentShareRecordId(null);
+      } else {
+        // This case handles cancellation from the Facebook dialog (response is null).
+        console.log("Share cancelled from FB dialog.");
+        // We leave the modal open, allowing the user to either try sharing again
+        // or to click our "Cancel" button, which cleans up the share record.
+      }
+    } catch (error) {
+      console.error("An error occurred during the share process:", error);
+      setShareError("An error occurred during sharing. Please try again.");
     }
   };
 
@@ -1031,10 +1070,11 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
                 Cancel
               </button>
               <button
-                onClick={proceedWithFacebookShare}
+                onClick={handleShareToFacebook}
+                disabled={isLoading}
                 className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Share on Facebook
+                {isLoading ? "Sharing..." : "Share to Facebook"}
               </button>
             </div>
           </div>

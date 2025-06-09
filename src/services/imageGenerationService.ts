@@ -1,8 +1,6 @@
 import satori from "satori";
-import { html } from "satori-html";
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import JournalPreview from "../components/satori/JournalPreview";
+import JournalPreview, { extractFirstImageAndContent } from "../components/satori/JournalPreview";
 import { JournalEntry, Tag } from "@/types/supabase";
 
 // Function to fetch and embed font data
@@ -27,16 +25,21 @@ export const generateJournalImage = async (
       "https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff"
     );
 
-    // Render React component to an HTML string
-    const templateAsString = renderToStaticMarkup(
-      React.createElement(JournalPreview, { entry, tags })
+    // 1. Fetch dynamic data before rendering
+    const { imageUrl, remainingBlocks } = await extractFirstImageAndContent(
+      entry.content || "[]"
     );
 
-    // Convert the string to a template that satori-html can process
-    const template = html(templateAsString);
+    // 2. Create the component instance with all required props
+    const template = React.createElement(JournalPreview, {
+      entry,
+      tags,
+      imageUrl,
+      remainingBlocks,
+    });
 
-    // Generate SVG with satori
-    const svg = await satori(template as React.ReactNode, {
+    // 3. Generate SVG directly from the React element
+    const svg = await satori(template, {
       width: 1200,
       height: 630,
       fonts: [

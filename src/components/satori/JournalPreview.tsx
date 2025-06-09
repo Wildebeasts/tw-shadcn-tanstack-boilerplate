@@ -41,7 +41,34 @@ type Block = {
 
 type GroupedBlock = Block | { type: 'bulletList' | 'numberedList'; items: Block[] };
 
-const extractFirstImageAndContent = (content: string): { imageUrl: string | null; remainingBlocks: Block[] } => {
+// Helper to fetch image and convert to Data URI
+const toDataURL = async (url: string): Promise<string | null> => {
+  if (!url) {
+    console.log("toDataURL was called with an empty URL. Skipping fetch.");
+    return null;
+  }
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Failed to fetch image: ${response.statusText}`);
+      return null;
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`Failed to fetch and process image from ${url}:`, error);
+    return null;
+  }
+};
+
+// Updated async function to extract content and embed the image
+// eslint-disable-next-line react-refresh/only-export-components
+export const extractFirstImageAndContent = async (content: string): Promise<{ imageUrl: string | null; remainingBlocks: Block[] }> => {
   if (!content) {
     return { imageUrl: null, remainingBlocks: [] };
   }
@@ -57,8 +84,8 @@ const extractFirstImageAndContent = (content: string): { imageUrl: string | null
 
     for (const block of parsedBlocks) {
       if (!imageFound && block.type === 'image' && block.props.url) {
-        imageUrl = block.props.url;
-        imageFound = true; // We only want the first image
+        imageUrl = await toDataURL(block.props.url); // Embed image
+        imageFound = true; 
       } else {
         remainingBlocks.push(block);
       }
@@ -359,11 +386,21 @@ const renderBlock = (block: GroupedBlock, index: number): React.ReactNode => {
 interface JournalPreviewProps {
   entry: JournalEntry;
   tags: SupabaseTag[];
+  imageUrl: string | null;
+  remainingBlocks: Block[];
 }
 
-const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags }) => {
-  const { imageUrl, remainingBlocks } = extractFirstImageAndContent(entry.content || "[]");
+const hexToRgba = (hex: string, alpha: number): string => {
+    if (!hex || !hex.startsWith('#') || hex.length !== 7) {
+        return `rgba(108, 117, 125, ${alpha})`;
+    }
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
+const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, imageUrl, remainingBlocks }) => {
   const createdAt = entry.created_at || new Date().toISOString();
   const formattedDate = new Date(createdAt).toLocaleDateString("en-US", {
     weekday: 'short',
@@ -419,7 +456,7 @@ const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags }) => {
                     borderRadius: "8px",
                     fontSize: "18px",
                     fontWeight: 500,
-                    backgroundColor: tag.color_hex ? `${tag.color_hex}30` : '#e9ecef',
+                    backgroundColor: hexToRgba(tag.color_hex || '', 0.2),
                     color: tag.color_hex || '#495057',
                 }}>
                   {tag.name}
@@ -439,11 +476,11 @@ const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags }) => {
             {entry.manual_mood_label && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#a5d6a7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px' }}>
-                    {entry.manual_mood_label.toLowerCase().includes('happy') ? '😄' :
+                    {entry.manual_mood_label.toLowerCase().includes('amazing') ? '😄' :
+                     entry.manual_mood_label.toLowerCase().includes('happy') ? '😊' :
+                     entry.manual_mood_label.toLowerCase().includes('neutral') ? '😐' :
                      entry.manual_mood_label.toLowerCase().includes('sad') ? '😢' :
-                     entry.manual_mood_label.toLowerCase().includes('good') ? '😊' :
-                     entry.manual_mood_label.toLowerCase().includes('bad') ? '😠' :
-                    '😐'}
+                    '😠'}
                   </div>
                   <span style={{ fontSize: '18px', color: '#495057', textTransform: "capitalize" }}>{entry.manual_mood_label}</span>
                 </div>
