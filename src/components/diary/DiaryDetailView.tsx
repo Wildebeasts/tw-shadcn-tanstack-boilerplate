@@ -17,6 +17,7 @@ import { getPublicUrl, deleteFiles } from "@/services/storageService";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { useCreateBlockNote } from "@blocknote/react";
+import { codeBlock } from "@blocknote/code-block";
 import {
   PartialBlock,
   Block,
@@ -192,7 +193,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   );
 
   const client = createBlockNoteAIClient({
-    apiKey: "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",
+    apiKey: "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",
     baseURL: "https://api.groq.com/openai/v1/chat/completions",
   });
 
@@ -268,6 +269,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   
   const editor = useCreateBlockNote({
     schema,
+    codeBlock,
     dictionary: {
       ...en,
       ai: aiEn,

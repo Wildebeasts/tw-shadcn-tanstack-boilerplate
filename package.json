@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@ai-sdk/google": "^1.2.19",
 		"@ai-sdk/groq": "^1.2.9",
+		"@blocknote/code-block": "^0.31.2",
 		"@blocknote/core": "^0.32.0-hackdays.0",
 		"@blocknote/mantine": "^0.32.0-hackdays.0",
 		"@blocknote/react": "^0.32.0-hackdays.0",

@@ -17,6 +17,7 @@ import {
   FileReplaceButton,
   BasicTextStyleButton,
   BlockTypeSelect,
+  GridSuggestionMenuController,
 } from "@blocknote/react";
 import {
   getAISlashMenuItems,
@@ -55,7 +56,14 @@ const DiaryEditor: React.FC<DiaryEditorProps> = ({
             }
           }}
           formattingToolbar={false}
+          emojiPicker={false}
         >
+          <GridSuggestionMenuController
+            triggerCharacter={":"}
+            // Changes the Emoji Picker to only have 5 columns.
+            columns={5}
+            minQueryLength={2}
+          />
           <AIMenuController />
           <FormattingToolbarController
             formattingToolbar={(props) => (
