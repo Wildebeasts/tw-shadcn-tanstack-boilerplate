@@ -66,7 +66,7 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ supabase, userId }) => {
 
             const entryImages: DisplayImage[] = imageAttachments.map((att) => ({
               id: att.id!,
-              src: att.file_path,
+              src: att.file_url_cached,
               alt: att.file_name_original || 'User photo',
               date: entry.entry_timestamp ? new Date(entry.entry_timestamp).toLocaleDateString() : undefined,
             }));

@@ -32,7 +32,7 @@ export const SupabaseProvider = ({ children }: { children: ReactNode }) => {
       return createClient(supabaseUrl, supabaseAnonKey, {
         global: {
           fetch: async (url, options = {}) => {
-            const token = await getToken();
+            const token = await getToken({template: 'supabase'});
             const headers = new Headers(options.headers);
             if (token) {
               headers.set('Authorization', `Bearer ${token}`);

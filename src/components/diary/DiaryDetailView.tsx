@@ -267,6 +267,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
   });
   
   const editor = useCreateBlockNote({
+    schema,
     dictionary: {
       ...en,
       ai: aiEn,
@@ -277,7 +278,6 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
     ],
-    schema,
     uploadFile: handleFileUploadCallback,
   });
 
