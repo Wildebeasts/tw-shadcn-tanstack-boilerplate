@@ -9,6 +9,7 @@ import {
   ShoppingBag,
   UserCircle,
   PlusSquare,
+  Users,
   // FolderKanban, // Removed as it's used in NavProjects
   // Pencil, // Removed as it's used in NavProjects
   // Trash2, // Removed as it's used in NavProjects
@@ -70,7 +71,13 @@ const data = {
       items: [],
     },
   ],
-  navSecondary: [],
+  navSecondary: [
+    {
+      title: "Memory Zones",
+      url: "/journal/memory-zone",
+      icon: Users,
+    }
+  ],
   // projects: [ // Will be fetched dynamically
   //   {
   //     name: "Study",
@@ -285,12 +292,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </div>
         </div>
         {projectListContent()}
-        <div className="px-2 py-2 mt-4">
+        {/* <div className="px-2 py-2 mt-4">
           <h3 className="px-2 text-xs font-medium text-[#1e1742]/70 dark:text-white/70">
-            Trending Tags
+            Memory Zone
           </h3>
-        </div>
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        </div> */}
+        <NavSecondary items={data.navSecondary} className="" />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu className="NavUser">

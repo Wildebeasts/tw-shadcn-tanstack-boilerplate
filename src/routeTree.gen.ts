@@ -29,7 +29,9 @@ import { Route as JournalTodoImport } from './routes/journal/todo'
 import { Route as JournalDiaryImport } from './routes/journal/diary'
 import { Route as JournalDashboardImport } from './routes/journal/dashboard'
 import { Route as JournalBeanJourneyImport } from './routes/journal/bean-journey'
+import { Route as JournalMemoryZoneIndexImport } from './routes/journal/memory-zone/index'
 import { Route as JournalProjectProjectIdImport } from './routes/journal/project/$projectId'
+import { Route as JournalMemoryZoneZoneIdImport } from './routes/journal/memory-zone/$zoneId'
 
 // Create/Update Routes
 
@@ -140,9 +142,21 @@ const JournalBeanJourneyRoute = JournalBeanJourneyImport.update({
   getParentRoute: () => JournalRoute,
 } as any)
 
+const JournalMemoryZoneIndexRoute = JournalMemoryZoneIndexImport.update({
+  id: '/memory-zone/',
+  path: '/memory-zone/',
+  getParentRoute: () => JournalRoute,
+} as any)
+
 const JournalProjectProjectIdRoute = JournalProjectProjectIdImport.update({
   id: '/project/$projectId',
   path: '/project/$projectId',
+  getParentRoute: () => JournalRoute,
+} as any)
+
+const JournalMemoryZoneZoneIdRoute = JournalMemoryZoneZoneIdImport.update({
+  id: '/memory-zone/$zoneId',
+  path: '/memory-zone/$zoneId',
   getParentRoute: () => JournalRoute,
 } as any)
 
@@ -276,11 +290,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalIndexImport
       parentRoute: typeof JournalImport
     }
+    '/journal/memory-zone/$zoneId': {
+      id: '/journal/memory-zone/$zoneId'
+      path: '/memory-zone/$zoneId'
+      fullPath: '/journal/memory-zone/$zoneId'
+      preLoaderRoute: typeof JournalMemoryZoneZoneIdImport
+      parentRoute: typeof JournalImport
+    }
     '/journal/project/$projectId': {
       id: '/journal/project/$projectId'
       path: '/project/$projectId'
       fullPath: '/journal/project/$projectId'
       preLoaderRoute: typeof JournalProjectProjectIdImport
+      parentRoute: typeof JournalImport
+    }
+    '/journal/memory-zone/': {
+      id: '/journal/memory-zone/'
+      path: '/memory-zone'
+      fullPath: '/journal/memory-zone'
+      preLoaderRoute: typeof JournalMemoryZoneIndexImport
       parentRoute: typeof JournalImport
     }
   }
@@ -295,7 +323,9 @@ interface JournalRouteChildren {
   JournalTodoRoute: typeof JournalTodoRoute
   JournalUserProfileRoute: typeof JournalUserProfileRoute
   JournalIndexRoute: typeof JournalIndexRoute
+  JournalMemoryZoneZoneIdRoute: typeof JournalMemoryZoneZoneIdRoute
   JournalProjectProjectIdRoute: typeof JournalProjectProjectIdRoute
+  JournalMemoryZoneIndexRoute: typeof JournalMemoryZoneIndexRoute
 }
 
 const JournalRouteChildren: JournalRouteChildren = {
@@ -305,7 +335,9 @@ const JournalRouteChildren: JournalRouteChildren = {
   JournalTodoRoute: JournalTodoRoute,
   JournalUserProfileRoute: JournalUserProfileRoute,
   JournalIndexRoute: JournalIndexRoute,
+  JournalMemoryZoneZoneIdRoute: JournalMemoryZoneZoneIdRoute,
   JournalProjectProjectIdRoute: JournalProjectProjectIdRoute,
+  JournalMemoryZoneIndexRoute: JournalMemoryZoneIndexRoute,
 }
 
 const JournalRouteWithChildren =
@@ -352,7 +384,9 @@ export interface FileRoutesByFullPath {
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal/': typeof JournalIndexRoute
+  '/journal/memory-zone/$zoneId': typeof JournalMemoryZoneZoneIdRoute
   '/journal/project/$projectId': typeof JournalProjectProjectIdRoute
+  '/journal/memory-zone': typeof JournalMemoryZoneIndexRoute
 }
 
 export interface FileRoutesByTo {
@@ -373,7 +407,9 @@ export interface FileRoutesByTo {
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal': typeof JournalIndexRoute
+  '/journal/memory-zone/$zoneId': typeof JournalMemoryZoneZoneIdRoute
   '/journal/project/$projectId': typeof JournalProjectProjectIdRoute
+  '/journal/memory-zone': typeof JournalMemoryZoneIndexRoute
 }
 
 export interface FileRoutesById {
@@ -396,7 +432,9 @@ export interface FileRoutesById {
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal/': typeof JournalIndexRoute
+  '/journal/memory-zone/$zoneId': typeof JournalMemoryZoneZoneIdRoute
   '/journal/project/$projectId': typeof JournalProjectProjectIdRoute
+  '/journal/memory-zone/': typeof JournalMemoryZoneIndexRoute
 }
 
 export interface FileRouteTypes {
@@ -420,7 +458,9 @@ export interface FileRouteTypes {
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal/'
+    | '/journal/memory-zone/$zoneId'
     | '/journal/project/$projectId'
+    | '/journal/memory-zone'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -440,7 +480,9 @@ export interface FileRouteTypes {
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal'
+    | '/journal/memory-zone/$zoneId'
     | '/journal/project/$projectId'
+    | '/journal/memory-zone'
   id:
     | '__root__'
     | '/'
@@ -461,7 +503,9 @@ export interface FileRouteTypes {
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal/'
+    | '/journal/memory-zone/$zoneId'
     | '/journal/project/$projectId'
+    | '/journal/memory-zone/'
   fileRoutesById: FileRoutesById
 }
 
@@ -537,7 +581,9 @@ export const routeTree = rootRoute
         "/journal/todo",
         "/journal/user-profile",
         "/journal/",
-        "/journal/project/$projectId"
+        "/journal/memory-zone/$zoneId",
+        "/journal/project/$projectId",
+        "/journal/memory-zone/"
       ]
     },
     "/pricing": {
@@ -590,8 +636,16 @@ export const routeTree = rootRoute
       "filePath": "journal/index.tsx",
       "parent": "/journal"
     },
+    "/journal/memory-zone/$zoneId": {
+      "filePath": "journal/memory-zone/$zoneId.tsx",
+      "parent": "/journal"
+    },
     "/journal/project/$projectId": {
       "filePath": "journal/project/$projectId.tsx",
+      "parent": "/journal"
+    },
+    "/journal/memory-zone/": {
+      "filePath": "journal/memory-zone/index.tsx",
       "parent": "/journal"
     }
   }

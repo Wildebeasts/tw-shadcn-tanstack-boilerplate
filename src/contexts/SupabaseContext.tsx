@@ -62,6 +62,7 @@ export const SupabaseProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSupabase = (): SupabaseClient | null => {
   const context = useContext(SupabaseContext);
   if (context === undefined) {
