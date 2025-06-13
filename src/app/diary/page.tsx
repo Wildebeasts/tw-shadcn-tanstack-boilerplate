@@ -16,6 +16,9 @@ import { getProjectsByUserId } from '@/services/projectService'; // ADDED: Impor
 // import { useRouter, useSearchParams } from 'next/navigation'; // REMOVE Next.js router hooks
 import { useNavigate, useSearch, useRouterState } from '@tanstack/react-router'; // Import TanStack Router hooks
 import { ChevronLeft, ChevronRight } from 'lucide-react'; // Added Chevron icons
+import { createGroq } from "@ai-sdk/groq";
+import { Block } from '@blocknote/core';
+import { generateText } from 'ai';
 
 // ADDED: Imports for Realtime components
 // import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'; 
@@ -102,6 +105,9 @@ const DiaryPage = () => {
   const [allUserProjects, setAllUserProjects] = useState<Project[]>([]); // ADDED: State for user projects
   const [isLoadingUserProjects, setIsLoadingUserProjects] = useState(true); // ADDED: State for loading projects
   const [activeFilterProjectId, setActiveFilterProjectId] = useState<string | null>(null); // ADDED: State for active project filter
+
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
 
   // const router = useRouter(); // REMOVE Next.js useRouter
   // const searchParams = useSearchParams(); // REMOVE Next.js useSearchParams
@@ -449,6 +455,74 @@ const DiaryPage = () => {
   // If selected diary is filtered out, try to find it in the original diaries list
   const currentSelectedDiary = selectedDiary || diaries.find(d => d.id === selectedDiaryId);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extractTextFromBlockContent = (content: any[]): string => {
+    return content.map(item => {
+      if (item.type === 'link' && item.content) {
+        return extractTextFromBlockContent(item.content);
+      }
+      return item.text || '';
+    }).join('');
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!filteredDiaries.length) {
+      setAiSummary("No entries for this day to summarize.");
+      return;
+    }
+
+    setIsAiSummaryLoading(true);
+    setAiSummary(null);
+
+    try {
+      const groq = createGroq({
+        apiKey: "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",
+      });
+
+      const combinedContent = filteredDiaries
+        .map((diary) => {
+          if (!diary.content) return "";
+          try {
+            const blocks: Block[] = JSON.parse(diary.content as string);
+            return blocks
+              .map((block) => {
+                if (block.type === "paragraph" && block.content) {
+                  return extractTextFromBlockContent(block.content);
+                }
+                return "";
+              })
+              .join("\n");
+          } catch (e) {
+            // It might be plain text
+            if (typeof diary.content === 'string') {
+                return diary.content;
+            }
+            console.error("Error parsing diary content:", e);
+            return "";
+          }
+        })
+        .join("\n\n");
+
+      if (combinedContent.trim().length < 20) {
+        setAiSummary("Not enough content to generate a summary.");
+        setIsAiSummaryLoading(false);
+        return;
+      }
+
+      const { text } = await generateText({
+        model: groq("llama3-8b-8192"),
+        prompt: `Please provide a concise summary of the following journal entries for the day. The summary should be a single paragraph, highlighting the main activities, moods, and any significant events or thoughts. Entries are separated by newlines. Do not use markdown or special formatting. Just return the summary text:\n\n${combinedContent}`,
+      });
+
+      setAiSummary(text);
+    } catch (error) {
+      console.error("Error generating AI summary:", error);
+      setAiSummary("Failed to generate summary. Please try again.");
+    } finally {
+      setIsAiSummaryLoading(false);
+    }
+  };
+
   if (!userId) {
     return <div className="p-8 text-center">Please sign in to view your diaries.</div>;
   }
@@ -569,8 +643,27 @@ const DiaryPage = () => {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500 dark:text-gray-400 mb-1 sm:mb-2">
-              {daysOfWeek.map(day => <div key={day}>{day.slice(0,2)}</div>)}
+
+            <div className="mt-4">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={isAiSummaryLoading || filteredDiaries.length === 0}
+                className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isAiSummaryLoading ? 'Generating...' : 'Generate AI Summary'}
+              </button>
+              {aiSummary && (
+                <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-md">
+                  <p className="text-sm text-gray-800 dark:text-gray-200">{aiSummary}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mt-4">
+              {daysOfWeek.map(day => (
+                <div key={day}>{day.slice(0,2)}</div>
+              ))}
             </div>
             <div className="grid grid-cols-7 gap-1">
               {calendarDays.map((day, index) => {
