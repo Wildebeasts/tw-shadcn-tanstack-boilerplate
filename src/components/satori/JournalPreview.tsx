@@ -386,7 +386,6 @@ const renderBlock = (block: GroupedBlock, index: number): React.ReactNode => {
 interface JournalPreviewProps {
   entry: JournalEntry;
   tags: SupabaseTag[];
-  imageUrl: string | null;
   remainingBlocks: Block[];
 }
 
@@ -400,7 +399,7 @@ const hexToRgba = (hex: string, alpha: number): string => {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, imageUrl, remainingBlocks }) => {
+const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, remainingBlocks }) => {
   const createdAt = entry.created_at || new Date().toISOString();
   const formattedDate = new Date(createdAt).toLocaleDateString("en-US", {
     weekday: 'short',
@@ -423,19 +422,7 @@ const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, imageUrl, 
         position: "relative",
         gap: "32px"
     }}>
-      {imageUrl && (
-        <img
-          src={imageUrl}
-          alt="Journal"
-          style={{
-            width: "300px",
-            height: "100%",
-            borderRadius: "12px",
-            objectFit: "cover",
-          }}
-        />
-      )}
-      
+      {/* Removed image preview */}
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: "hidden" }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: "space-between" }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>

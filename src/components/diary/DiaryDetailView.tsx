@@ -45,17 +45,7 @@ import "@blocknote/xl-ai/style.css";
 import DiaryHeader from "./detail/DiaryHeader";
 import DiaryEditor from "./detail/DiaryEditor";
 import DiaryModals from "./detail/DiaryModals";
-import {
-  FacebookProvider,
-  useFacebook,
-  useShare,
-} from "react-facebook";
 import { generateJournalImage } from "@/services/imageGenerationService";
-import {
-  createFacebookShare,
-  deleteFacebookShare,
-  updateFacebookShare,
-} from "@/services/facebookShareService";
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -70,14 +60,13 @@ const defaultInitialBlocks: PartialBlock[] = [
 ];
 const defaultInitialContentString = JSON.stringify(defaultInitialBlocks);
 
-const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
+const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
   diary,
   onUpdateDiary,
   onDeleteDiary,
   userId,
   supabase,
 }) => {
-  const { init: initFacebookSdk, isLoading: isFbSdkLoading } = useFacebook();
   const [editableTitle, setEditableTitle] = useState(diary.title || "");
   const [currentEditorContentString, setCurrentEditorContentString] = useState<
     string | undefined
@@ -104,14 +93,6 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
 
   const [isSharing, setIsSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
-  const [isSharePreviewModalVisible, setIsSharePreviewModalVisible] =
-    useState(false);
-  const [sharePreviewImageUrl, setSharePreviewImageUrl] = useState<
-    string | null
-  >(null);
-  const [currentShareRecordId, setCurrentShareRecordId] = useState<
-    string | null
-  >(null);
 
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -808,25 +789,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     setIsDeleteConfirmVisible(false);
   };
 
-  const handleCancelAndCleanupShare = async () => {
-    const recordIdToDel = currentShareRecordId;
-
-    // Reset state immediately for better UX
-    setIsSharePreviewModalVisible(false);
-    setSharePreviewImageUrl(null);
-    setCurrentShareRecordId(null);
-
-    if (recordIdToDel) {
-      try {
-        await deleteFacebookShare(supabase, recordIdToDel);
-        console.log("Successfully deleted share record from DB.");
-      } catch (error) {
-        console.error("Failed to delete share record from DB.", error);
-      }
-    }
-  };
-
-  const proceedWithShareGeneration = useCallback(async () => {
+  const handleShareToFacebook = async () => {
     if (!diary.id || !userId || !supabase) {
       console.error("Cannot generate share, missing context.");
       setShareError("An unexpected error occurred. Missing context.");
@@ -837,6 +800,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
     setShareError(null);
 
     try {
+      // Step 1. Generate and upload image
       const tagsForImage = availableTags.filter((tag) =>
         selectedTagIds.includes(tag.id!)
       );
@@ -854,7 +818,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         .from(SHARE_IMAGE_BUCKET_NAME)
         .upload(filePath, imageFile, {
           contentType: "image/png",
-          cacheControl: "0",
+          cacheControl: "3600",
           upsert: false,
         });
 
@@ -871,129 +835,16 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         throw new Error("Failed to get public URL for share image.");
       }
 
-      const newShareRecord = await createFacebookShare(supabase, {
-        user_id: userId,
-        journal_entry_id: diary.id!,
-        preview_image_path: filePath,
-        preview_image_url_cached: imageUrl,
-        share_link_used: imageUrl,
-        share_caption: diary.title || "A new entry from my BeanJournal!",
-      });
-
-      if (!newShareRecord || !newShareRecord.id) {
-        throw new Error("Failed to create share record in database.");
-      }
-
-      setCurrentShareRecordId(newShareRecord.id);
-      setSharePreviewImageUrl(imageUrl);
-      setIsSharePreviewModalVisible(true);
+      // Step 2. Open Facebook Share Dialog
+      const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+        imageUrl
+      )}`;
+      window.open(facebookShareUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setShareError(message || "An unexpected error occurred during sharing.");
     } finally {
       setIsSharing(false);
-    }
-  }, [
-    diary,
-    userId,
-    supabase,
-    availableTags,
-    selectedTagIds,
-    SHARE_IMAGE_BUCKET_NAME,
-  ]);
-
-  const handleGenerateSharePreview = useCallback(async () => {
-    if (isFbSdkLoading) {
-      setShareError("Facebook SDK is loading. Please try again in a moment.");
-      return;
-    }
-
-    if (!diary.id) {
-      console.error("Journal Entry ID is missing.");
-      setShareError("Cannot share: Entry ID is missing.");
-      return;
-    }
-
-    const api = await initFacebookSdk();
-    if (!api) {
-      setShareError("Failed to initialize Facebook SDK.");
-      return;
-    }
-
-    try {
-      const response = await api.getLoginStatus();
-      if (response.status === "connected") {
-        await proceedWithShareGeneration();
-      } else {
-        const loginResponse = await api.login({
-          scope: "public_profile",
-        });
-        if (loginResponse.status === "connected") {
-          await proceedWithShareGeneration();
-        } else {
-          setShareError(
-            "Facebook login is required to share. Please try again."
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Facebook login or status check failed:", error);
-      setShareError("Failed to connect to Facebook. Please try again.");
-    }
-  }, [
-    isFbSdkLoading,
-    diary.id,
-    initFacebookSdk,
-    proceedWithShareGeneration,
-    setShareError,
-  ]);
-
-  const { share, isLoading } = useShare();
-  const handleShareToFacebook = async () => {
-    try {
-      const response = (await share({
-        href: sharePreviewImageUrl!,
-        display: "iframe",
-      })) as { post_id?: string } | null;
-
-      // The share dialog on desktop can return an empty object on success,
-      // while on mobile it might return a post_id. On cancellation, it
-      // often returns null. So, we'll treat any object response as a success.
-      if (response) {
-        if (response.post_id) {
-          console.log("Successfully shared with post_id:", response.post_id);
-          if (currentShareRecordId) {
-            try {
-              await updateFacebookShare(supabase, currentShareRecordId, {
-                facebook_post_id: response.post_id,
-              });
-              console.log("Share record updated with post_id.");
-            } catch (error) {
-              console.error(
-                "Failed to update share record with post_id",
-                error
-              );
-            }
-          }
-        } else {
-          console.log(
-            "Share dialog closed. Assuming success without a post_id."
-          );
-        }
-
-        // On any success, close the modal and reset state.
-        setIsSharePreviewModalVisible(false);
-        setSharePreviewImageUrl(null);
-        setCurrentShareRecordId(null);
-      } else {
-        // This case handles cancellation from the Facebook dialog (response is null).
-        console.log("Share cancelled from FB dialog.");
-        // We leave the modal open, allowing the user to either try sharing again
-        // or to click our "Cancel" button, which cleans up the share record.
-      }
-    } catch (error) {
-      console.error("An error occurred during the share process:", error);
-      setShareError("An error occurred during sharing. Please try again.");
     }
   };
 
@@ -1017,7 +868,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
         showDeleteConfirm={showDeleteConfirm}
-        onShareToFacebook={handleGenerateSharePreview}
+        onShareToFacebook={handleShareToFacebook}
         isSharing={isSharing}
       />
 
@@ -1047,57 +898,7 @@ const DiaryDetailViewContent: React.FC<DiaryDetailViewProps> = ({
         currentVideoUrl={currentVideoUrl}
         handleVideoModalCancel={handleVideoModalCancel}
       />
-      {isSharePreviewModalVisible && (
-        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center p-4">
-          <div className="relative p-5 border shadow-lg rounded-lg bg-white w-full max-w-4xl max-h-[80vh] flex flex-col">
-            <h3 className="text-2xl font-bold mb-4 text-gray-800">
-              Share Preview
-            </h3>
-            <div className="flex-grow mb-4 flex items-center justify-center bg-gray-100 rounded-md overflow-hidden">
-              {sharePreviewImageUrl ? (
-                <img
-                  src={sharePreviewImageUrl}
-                  alt="Share preview"
-                  className="max-w-full max-h-full object-contain"
-                />
-              ) : (
-                <div className="text-gray-500">Generating preview...</div>
-              )}
-            </div>
-            <div className="flex justify-end space-x-4 flex-shrink-0">
-              <button
-                onClick={handleCancelAndCleanupShare}
-                className="px-5 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleShareToFacebook}
-                disabled={isLoading}
-                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                {isLoading ? "Sharing..." : "Share to Facebook"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
-};
-
-// NOTE: The main logic has been moved to DiaryDetailViewContent above.
-// This allows us to wrap the component with FacebookProvider and use the
-// useFacebook hook inside DiaryDetailViewContent.
-// You will need to set up a Facebook App and add the App ID to your
-// environment variables.
-const DiaryDetailView: React.FC<DiaryDetailViewProps> = (props) => {
-  return (
-    <FacebookProvider
-      appId={import.meta.env.VITE_FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID"}
-    >
-      <DiaryDetailViewContent {...props} />
-    </FacebookProvider>
   );
 };
 
