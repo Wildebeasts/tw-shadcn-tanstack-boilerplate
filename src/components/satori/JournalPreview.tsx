@@ -519,6 +519,16 @@ const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, imageUrl, 
           </div>
         </div>
       </div>
+      <p
+        style={{
+          marginTop: "20px",
+          fontSize: "14px",
+          color: "#adb5bd",
+          textAlign: "center",
+        }}
+      >
+        Powered by Bean Journal
+      </p>
     </div>
   );
 };

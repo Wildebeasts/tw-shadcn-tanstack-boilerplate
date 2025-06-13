@@ -46,6 +46,7 @@ import DiaryHeader from "./detail/DiaryHeader";
 import DiaryEditor from "./detail/DiaryEditor";
 import DiaryModals from "./detail/DiaryModals";
 import { generateJournalImage } from "@/services/imageGenerationService";
+import { createFacebookShare } from "@/services/facebookShareService";
 
 interface DiaryDetailViewProps {
   diary: JournalEntry;
@@ -86,6 +87,10 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     diary.updated_at ? new Date(diary.updated_at) : null
   );
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
+  const [isShareConfirmVisible, setIsShareConfirmVisible] = useState(false);
+  const [sharePreviewImageUri, setSharePreviewImageUri] = useState<
+    string | null
+  >(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
@@ -789,25 +794,48 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
     setIsDeleteConfirmVisible(false);
   };
 
-  const handleShareToFacebook = async () => {
-    if (!diary.id || !userId || !supabase) {
-      console.error("Cannot generate share, missing context.");
-      setShareError("An unexpected error occurred. Missing context.");
+  const showShareConfirm = async () => {
+    setIsSharing(true);
+    setShareError(null);
+    try {
+      const tagsForImage = availableTags.filter((tag) =>
+        selectedTagIds.includes(tag.id!)
+      );
+      const imageDataUri = await generateJournalImage(diary, tagsForImage);
+      setSharePreviewImageUri(imageDataUri);
+      setIsShareConfirmVisible(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setShareError(
+        message || "An unexpected error occurred while generating the preview."
+      );
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleShareConfirmCancel = () => {
+    setIsShareConfirmVisible(false);
+    setSharePreviewImageUri(null);
+  };
+
+  const handleShareConfirmOk = async () => {
+    if (!diary.id || !userId || !supabase || !sharePreviewImageUri) {
+      console.error("Cannot generate share, missing context or preview image.");
+      setShareError(
+        "An unexpected error occurred. Missing context or preview image."
+      );
       return;
     }
 
     setIsSharing(true);
     setShareError(null);
+    setIsShareConfirmVisible(false);
 
     try {
-      // Step 1. Generate and upload image
-      const tagsForImage = availableTags.filter((tag) =>
-        selectedTagIds.includes(tag.id!)
-      );
-
-      const imageDataUri = await generateJournalImage(diary, tagsForImage);
+      // Image already generated, now upload
       const imageFile = dataURItoFile(
-        imageDataUri,
+        sharePreviewImageUri,
         `share-image-${diary.id}.png`
       );
 
@@ -835,7 +863,15 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         throw new Error("Failed to get public URL for share image.");
       }
 
-      // Step 2. Open Facebook Share Dialog
+      // Create Facebook share record
+      await createFacebookShare(supabase, {
+        user_id: userId,
+        journal_entry_id: diary.id,
+        preview_image_path: filePath,
+        preview_image_url_cached: imageUrl,
+      });
+
+      // Open Facebook Share Dialog
       const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
         imageUrl
       )}`;
@@ -845,6 +881,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
       setShareError(message || "An unexpected error occurred during sharing.");
     } finally {
       setIsSharing(false);
+      setSharePreviewImageUri(null);
     }
   };
 
@@ -868,7 +905,7 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
         showDeleteConfirm={showDeleteConfirm}
-        onShareToFacebook={handleShareToFacebook}
+        onShareToFacebook={showShareConfirm}
         isSharing={isSharing}
       />
 
@@ -897,6 +934,10 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         isVideoModalVisible={isVideoModalVisible}
         currentVideoUrl={currentVideoUrl}
         handleVideoModalCancel={handleVideoModalCancel}
+        isShareConfirmVisible={isShareConfirmVisible}
+        handleShareConfirmOk={handleShareConfirmOk}
+        handleShareConfirmCancel={handleShareConfirmCancel}
+        sharePreviewImageUri={sharePreviewImageUri}
       />
     </div>
   );

@@ -7,24 +7,17 @@ const TABLE_NAME = "facebook_shares";
  * Creates a new Facebook share record.
  * @param supabase The Supabase client instance.
  * @param shareData The data for the new share record.
- * @returns The newly created FacebookShare object.
  */
 export const createFacebookShare = async (
   supabase: SupabaseClient,
   shareData: Omit<FacebookShare, "id" | "shared_at">
-): Promise<FacebookShare> => {
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .insert([shareData])
-    .select()
-    .single();
+): Promise<void> => {
+  const { error } = await supabase.from(TABLE_NAME).insert([shareData]);
 
   if (error) {
     console.error("Error creating Facebook share record:", error);
     throw new Error(`Could not create Facebook share record: ${error.message}`);
   }
-
-  return data;
 };
 
 /**
@@ -32,26 +25,21 @@ export const createFacebookShare = async (
  * @param supabase The Supabase client instance.
  * @param shareId The ID of the share record to update.
  * @param updates The partial data to update.
- * @returns The updated FacebookShare object.
  */
 export const updateFacebookShare = async (
   supabase: SupabaseClient,
   shareId: string,
   updates: Partial<FacebookShare>
-): Promise<FacebookShare> => {
-  const { data, error } = await supabase
+): Promise<void> => {
+  const { error } = await supabase
     .from(TABLE_NAME)
     .update(updates)
-    .eq("id", shareId)
-    .select()
-    .single();
+    .eq("id", shareId);
 
   if (error) {
     console.error("Error updating Facebook share record:", error);
     throw new Error(`Could not update Facebook share record: ${error.message}`);
   }
-
-  return data;
 };
 
 /**

@@ -9,6 +9,10 @@ interface DiaryModalsProps {
   isVideoModalVisible: boolean;
   currentVideoUrl: string | null;
   handleVideoModalCancel: () => void;
+  isShareConfirmVisible: boolean;
+  handleShareConfirmOk: () => void;
+  handleShareConfirmCancel: () => void;
+  sharePreviewImageUri: string | null;
 }
 
 const DiaryModals: React.FC<DiaryModalsProps> = ({
@@ -19,6 +23,10 @@ const DiaryModals: React.FC<DiaryModalsProps> = ({
   isVideoModalVisible,
   currentVideoUrl,
   handleVideoModalCancel,
+  isShareConfirmVisible,
+  handleShareConfirmOk,
+  handleShareConfirmCancel,
+  sharePreviewImageUri,
 }) => {
   return (
     <>
@@ -28,7 +36,7 @@ const DiaryModals: React.FC<DiaryModalsProps> = ({
           title="Video Preview"
           footer={null}
           onCancel={handleVideoModalCancel}
-          destroyOnClose
+          destroyOnClose={false}
           centered
           width="80vw"
           styles={{ body: { padding: 0, lineHeight: 0 } }}
@@ -55,6 +63,32 @@ const DiaryModals: React.FC<DiaryModalsProps> = ({
           Are you sure you want to delete this diary entry titled "{diaryTitle}"?
           This action cannot be undone.
         </p>
+      </AntModal>
+
+      <AntModal
+        title="Confirm Share to Facebook"
+        open={isShareConfirmVisible}
+        onOk={handleShareConfirmOk}
+        onCancel={handleShareConfirmCancel}
+        okText="Share"
+        cancelText="Cancel"
+        width={600}
+      >
+        <div className="space-y-4">
+          <p>
+            You are about to share a preview of this journal entry to your
+            Facebook timeline. Does this look right?
+          </p>
+          {sharePreviewImageUri && (
+            <div className="border rounded-lg p-2 bg-gray-50">
+              <img
+                src={sharePreviewImageUri}
+                alt="Journal entry share preview"
+                className="w-full h-auto rounded"
+              />
+            </div>
+          )}
+        </div>
       </AntModal>
     </>
   );
