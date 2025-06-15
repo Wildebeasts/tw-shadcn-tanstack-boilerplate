@@ -522,7 +522,7 @@ const JournalPreview: React.FC<JournalPreviewProps> = ({ entry, tags, imageUrl, 
       <p
         style={{
           marginTop: "20px",
-          fontSize: "14px",
+          fontSize: "18px",
           color: "#adb5bd",
           textAlign: "center",
         }}

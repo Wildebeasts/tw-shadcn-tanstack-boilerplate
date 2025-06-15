@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter, useNavigate } from "@tanstack/react-router";
 import { ClerkProvider } from '@clerk/clerk-react'
 import { Toaster } from 'sonner';
+import { HelmetProvider } from 'react-helmet-async';
 
 //theme provider from shared components (e.g. for light/dark mode)
 import { ThemeProvider as ShadThemeProvider } from "@/components/shared/ThemeProvider";
@@ -80,9 +81,11 @@ if (!rootElement.innerHTML) {
 	const root = ReactDOM.createRoot(rootElement);
 	root.render(
 		<StrictMode>
-			<CustomThemeProvider>
-				<RouterProvider router={router} />
-			</CustomThemeProvider>
+			<HelmetProvider>
+				<CustomThemeProvider>
+					<RouterProvider router={router} />
+				</CustomThemeProvider>
+			</HelmetProvider>
 		</StrictMode>,
 	);
 }

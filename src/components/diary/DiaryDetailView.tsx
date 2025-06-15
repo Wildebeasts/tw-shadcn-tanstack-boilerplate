@@ -871,10 +871,16 @@ const DiaryDetailView: React.FC<DiaryDetailViewProps> = ({
         preview_image_url_cached: imageUrl,
       });
 
-      // Open Facebook Share Dialog
+      // Open Facebook Share Dialog with the direct image URL
+      const tagNames = availableTags
+        .filter((t) => selectedTagIds.includes(t.id!))
+        .map((t) => `#${t.name}`)
+        .join(" ");
+      const quote = `Check out my journal! ${tagNames}`;
+      const hashtag = encodeURIComponent("#BeanJournal");
       const facebookShareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
         imageUrl
-      )}`;
+      )}&quote=${encodeURIComponent(quote)}&hashtag=${hashtag}`;
       window.open(facebookShareUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -24,6 +24,7 @@ import { Route as IndexImport } from './routes/index'
 import { Route as JournalIndexImport } from './routes/journal/index'
 import { Route as SignUpContinueImport } from './routes/sign-up/continue'
 import { Route as SignInSsoCallbackImport } from './routes/sign-in/sso-callback'
+import { Route as ShareShareIdImport } from './routes/share/$shareId'
 import { Route as JournalUserProfileImport } from './routes/journal/user-profile'
 import { Route as JournalTodoImport } from './routes/journal/todo'
 import { Route as JournalDiaryImport } from './routes/journal/diary'
@@ -110,6 +111,12 @@ const SignInSsoCallbackRoute = SignInSsoCallbackImport.update({
   id: '/sso-callback',
   path: '/sso-callback',
   getParentRoute: () => SignInRoute,
+} as any)
+
+const ShareShareIdRoute = ShareShareIdImport.update({
+  id: '/share/$shareId',
+  path: '/share/$shareId',
+  getParentRoute: () => rootRoute,
 } as any)
 
 const JournalUserProfileRoute = JournalUserProfileImport.update({
@@ -269,6 +276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalUserProfileImport
       parentRoute: typeof JournalImport
     }
+    '/share/$shareId': {
+      id: '/share/$shareId'
+      path: '/share/$shareId'
+      fullPath: '/share/$shareId'
+      preLoaderRoute: typeof ShareShareIdImport
+      parentRoute: typeof rootRoute
+    }
     '/sign-in/sso-callback': {
       id: '/sign-in/sso-callback'
       path: '/sso-callback'
@@ -381,6 +395,7 @@ export interface FileRoutesByFullPath {
   '/journal/diary': typeof JournalDiaryRoute
   '/journal/todo': typeof JournalTodoRoute
   '/journal/user-profile': typeof JournalUserProfileRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal/': typeof JournalIndexRoute
@@ -404,6 +419,7 @@ export interface FileRoutesByTo {
   '/journal/diary': typeof JournalDiaryRoute
   '/journal/todo': typeof JournalTodoRoute
   '/journal/user-profile': typeof JournalUserProfileRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal': typeof JournalIndexRoute
@@ -429,6 +445,7 @@ export interface FileRoutesById {
   '/journal/diary': typeof JournalDiaryRoute
   '/journal/todo': typeof JournalTodoRoute
   '/journal/user-profile': typeof JournalUserProfileRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/sign-up/continue': typeof SignUpContinueRoute
   '/journal/': typeof JournalIndexRoute
@@ -455,6 +472,7 @@ export interface FileRouteTypes {
     | '/journal/diary'
     | '/journal/todo'
     | '/journal/user-profile'
+    | '/share/$shareId'
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal/'
@@ -477,6 +495,7 @@ export interface FileRouteTypes {
     | '/journal/diary'
     | '/journal/todo'
     | '/journal/user-profile'
+    | '/share/$shareId'
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal'
@@ -500,6 +519,7 @@ export interface FileRouteTypes {
     | '/journal/diary'
     | '/journal/todo'
     | '/journal/user-profile'
+    | '/share/$shareId'
     | '/sign-in/sso-callback'
     | '/sign-up/continue'
     | '/journal/'
@@ -520,6 +540,7 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRouteWithChildren
   SignUpRoute: typeof SignUpRouteWithChildren
   ThemeShopRoute: typeof ThemeShopRoute
+  ShareShareIdRoute: typeof ShareShareIdRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -533,6 +554,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRouteWithChildren,
   SignUpRoute: SignUpRouteWithChildren,
   ThemeShopRoute: ThemeShopRoute,
+  ShareShareIdRoute: ShareShareIdRoute,
 }
 
 export const routeTree = rootRoute
@@ -554,7 +576,8 @@ export const routeTree = rootRoute
         "/pricing",
         "/sign-in",
         "/sign-up",
-        "/theme-shop"
+        "/theme-shop",
+        "/share/$shareId"
       ]
     },
     "/": {
@@ -623,6 +646,9 @@ export const routeTree = rootRoute
     "/journal/user-profile": {
       "filePath": "journal/user-profile.tsx",
       "parent": "/journal"
+    },
+    "/share/$shareId": {
+      "filePath": "share/$shareId.tsx"
     },
     "/sign-in/sso-callback": {
       "filePath": "sign-in/sso-callback.tsx",
